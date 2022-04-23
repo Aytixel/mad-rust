@@ -1,0 +1,8 @@
+[package]
+name = "mmo7-driver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hidapi = "1.4.1"
+rdev = "0.5.1"
