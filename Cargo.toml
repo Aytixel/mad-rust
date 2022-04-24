@@ -7,3 +7,4 @@ edition = "2021"
 members = ["driver/mmo7"]
 
 [dependencies]
+sysinfo = "0.23.10"
