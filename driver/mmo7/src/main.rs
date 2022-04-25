@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread::{sleep, spawn};
-use std::time::{Duration, Instant};
+use std::thread::spawn;
+use std::time::Duration;
 
 use rusb::{Context, DeviceHandle, UsbContext};
+use util::timer::Timer;
 
-const TIMEOUT: Duration = Duration::from_secs(1);
+const TIMEOUT_1S: Duration = Duration::from_secs(1);
 const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
 
@@ -18,35 +19,10 @@ struct Endpoint {
     address: u8,
 }
 
-#[derive(Debug)]
-struct Timer {
-    frame_duration: Duration,
-    last_update: Instant,
-}
-
-impl Timer {
-    fn new(frame_duration: Duration) -> Self {
-        Self {
-            frame_duration: frame_duration,
-            last_update: Instant::now(),
-        }
-    }
-
-    fn wait(&mut self) {
-        let elapsed = self.last_update.elapsed();
-
-        if elapsed < self.frame_duration {
-            sleep(self.frame_duration - elapsed);
-        }
-
-        self.last_update = Instant::now()
-    }
-}
-
 fn main() {
     let context = Context::new().unwrap();
     let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
-    let mut timer = Timer::new(TIMEOUT);
+    let mut timer = Timer::new(TIMEOUT_1S);
 
     loop {
         for (serial_number, is_running) in device_list.clone().iter() {
@@ -62,9 +38,9 @@ fn main() {
                 if let Ok(device_handle) = device.open() {
                     if let Some(serial_number) = device_handle
                         .read_serial_number_string(
-                            device_handle.read_languages(TIMEOUT).unwrap()[0],
+                            device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
                             &device_descriptor,
-                            TIMEOUT,
+                            TIMEOUT_1S,
                         )
                         .ok()
                     {
@@ -97,9 +73,9 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
 
             if let Some(serial_number_found) = device_handle
                 .read_serial_number_string(
-                    device_handle.read_languages(TIMEOUT).unwrap()[0],
+                    device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
                     &device_descriptor,
-                    TIMEOUT,
+                    TIMEOUT_1S,
                 )
                 .ok()
             {
@@ -149,14 +125,18 @@ fn run_device(serial_number: String) {
         let mut timer = Timer::new(Duration::from_micros(500));
 
         loop {
-            match device_handle.read_interrupt(endpoint.address, &mut buf, TIMEOUT) {
-                Ok(len) => {
-                    println!("{} : {:?}", serial_number, &buf[..len]);
+            match device_handle.read_interrupt(endpoint.address, &mut buf, Duration::ZERO) {
+                Ok(_) => {
+                    println!("{} : {:?}", serial_number, buf);
                 }
                 Err(rusb::Error::Timeout)
                 | Err(rusb::Error::Pipe)
                 | Err(rusb::Error::Overflow)
-                | Err(rusb::Error::Io) => {}
+                | Err(rusb::Error::Io) => {
+                    buf = [0; 8];
+
+                    println!("{} : {:?}", serial_number, buf);
+                }
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);
                     break;
