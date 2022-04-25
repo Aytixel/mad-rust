@@ -1,4 +1,6 @@
-pub mod server {
+pub use server::Server;
+
+mod server {
     use std::sync::mpsc::{channel, Receiver, Sender};
     use std::thread::spawn;
 
@@ -19,7 +21,9 @@ pub mod server {
     }
 }
 
-pub mod client {
+pub use client::Client;
+
+mod client {
     use sysinfo::{ProcessExt, System, SystemExt};
 
     use std::sync::mpsc::{channel, Receiver, Sender};
