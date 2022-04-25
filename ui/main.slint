@@ -1,0 +1,27 @@
+import "./font/OpenSans.ttf";
+import { Button, VerticalBox } from "std-widgets.slint";
+import { DeviceSelectionWindow } from "./device_selection.slint";
+
+struct State := {
+    name: string
+}
+
+export MainWindow := Window {
+    default-font-family: "OpenSans";
+
+    property <[State]> app_states: [
+        {name: "Device selection"}
+    ];
+    property <int> app_state: 0;
+
+    Text { 
+        text: parent.app_states[app_state].name;
+        color: green;
+    }
+
+    if app_state == 0: Rectangle {
+        DeviceSelectionWindow {
+
+        }
+    }
+}

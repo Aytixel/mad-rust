@@ -2,9 +2,13 @@
 name = "mad-rust"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [workspace]
 members = ["driver/mmo7"]
 
 [dependencies]
-sysinfo = "0.23.10"
+slint = "0.2.1"
+
+[build-dependencies]
+slint-build = "0.2.1"
