@@ -9,6 +9,7 @@ members = ["driver/mmo7"]
 
 [dependencies]
 slint = "0.2.1"
+util = { path = "./util" }
 
 [build-dependencies]
 slint-build = "0.2.1"
