@@ -1,6 +1,8 @@
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
+pub const TIMEOUT_1S: Duration = Duration::from_secs(1);
+
 #[derive(Debug)]
 pub struct Timer {
     pub frame_duration: Duration,

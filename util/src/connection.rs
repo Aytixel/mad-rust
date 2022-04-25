@@ -1,22 +1,21 @@
 pub use server::Server;
 
 mod server {
-    use std::sync::mpsc::{channel, Receiver, Sender};
     use std::thread::spawn;
 
+    use crate::thread::DualChannel;
+
     pub struct Server {
-        tx: Sender<String>,
-        rx: Receiver<String>,
+        dual_channel: DualChannel<String>,
     }
 
     impl Server {
         pub fn new() -> Self {
-            let (server_tx, rx) = channel();
-            let (tx, server_rx) = channel();
+            let (host, child) = DualChannel::new();
 
             spawn(move || {});
 
-            Self { tx: tx, rx: rx }
+            Self { dual_channel: host }
         }
     }
 }
@@ -24,35 +23,32 @@ mod server {
 pub use client::Client;
 
 mod client {
-    use sysinfo::{ProcessExt, System, SystemExt};
+    use sysinfo::{ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt};
 
-    use std::sync::mpsc::{channel, Receiver, Sender};
     use std::thread::spawn;
 
+    use crate::thread::DualChannel;
+
     pub struct Client {
-        tx: Sender<String>,
-        rx: Receiver<String>,
+        dual_channel: DualChannel<String>,
     }
 
     impl Client {
         pub fn new() -> Self {
-            let (server_tx, rx) = channel();
-            let (tx, server_rx) = channel();
-            let mut sys = System::new_all();
+            let (host, child) = DualChannel::new();
+            let mut sys = System::new_with_specifics(
+                RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+            );
 
             spawn(move || {
-                sys.refresh_all();
+                sys.refresh_processes_specifics(ProcessRefreshKind::new());
 
-                // Number of processors:
-                println!("NB processors: {}", sys.processors().len());
-
-                // Display processes ID, name na disk usage:
-                for (pid, process) in sys.processes() {
-                    println!("[{}] {} {:?}", pid, process.name(), process.disk_usage());
+                for process in sys.processes_by_name("mad-rust") {
+                    println!("[{}] {:?}", process.pid(), process.exe());
                 }
             });
 
-            Self { tx: tx, rx: rx }
+            Self { dual_channel: host }
         }
     }
 }

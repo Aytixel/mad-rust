@@ -5,9 +5,10 @@ use std::thread::spawn;
 use std::time::Duration;
 
 use rusb::{Context, DeviceHandle, UsbContext};
-use util::timer::Timer;
+use util::connection::Client;
+use util::thread::kill_double;
+use util::time::{Timer, TIMEOUT_1S};
 
-const TIMEOUT_1S: Duration = Duration::from_secs(1);
 const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
 
@@ -20,6 +21,10 @@ struct Endpoint {
 }
 
 fn main() {
+    kill_double();
+
+    Client::new();
+
     let context = Context::new().unwrap();
     let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
     let mut timer = Timer::new(TIMEOUT_1S);
