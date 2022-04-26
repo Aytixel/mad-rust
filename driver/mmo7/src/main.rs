@@ -22,8 +22,8 @@ struct Endpoint {
 
 fn main() {
     if !kill_double() {
-        Client::new();
-
+        let client = Client::new();
+        let client_dualchannel = client.dual_channel;
         let context = Context::new().unwrap();
         let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
         let mut timer = Timer::new(TIMEOUT_1S);
