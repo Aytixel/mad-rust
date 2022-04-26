@@ -21,51 +21,51 @@ struct Endpoint {
 }
 
 fn main() {
-    kill_double();
+    if !kill_double() {
+        Client::new();
 
-    Client::new();
+        let context = Context::new().unwrap();
+        let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
+        let mut timer = Timer::new(TIMEOUT_1S);
 
-    let context = Context::new().unwrap();
-    let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
-    let mut timer = Timer::new(TIMEOUT_1S);
-
-    loop {
-        for (serial_number, is_running) in device_list.clone().iter() {
-            if !(*is_running).load(Ordering::Relaxed) {
-                device_list.remove(serial_number);
+        loop {
+            for (serial_number, is_running) in device_list.clone().iter() {
+                if !(*is_running).load(Ordering::Relaxed) {
+                    device_list.remove(serial_number);
+                }
             }
-        }
 
-        for device in context.devices().unwrap().iter() {
-            let device_descriptor = device.device_descriptor().unwrap();
+            for device in context.devices().unwrap().iter() {
+                let device_descriptor = device.device_descriptor().unwrap();
 
-            if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
-                if let Ok(device_handle) = device.open() {
-                    if let Some(serial_number) = device_handle
-                        .read_serial_number_string(
-                            device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
-                            &device_descriptor,
-                            TIMEOUT_1S,
-                        )
-                        .ok()
-                    {
-                        if let None = device_list.get(&serial_number) {
-                            let is_running = Arc::new(AtomicBool::new(true));
+                if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
+                    if let Ok(device_handle) = device.open() {
+                        if let Some(serial_number) = device_handle
+                            .read_serial_number_string(
+                                device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
+                                &device_descriptor,
+                                TIMEOUT_1S,
+                            )
+                            .ok()
+                        {
+                            if let None = device_list.get(&serial_number) {
+                                let is_running = Arc::new(AtomicBool::new(true));
 
-                            device_list.insert(serial_number.clone(), is_running.clone());
+                                device_list.insert(serial_number.clone(), is_running.clone());
 
-                            spawn(move || {
-                                run_device(serial_number);
+                                spawn(move || {
+                                    run_device(serial_number);
 
-                                (*is_running).store(false, Ordering::Relaxed);
-                            });
+                                    (*is_running).store(false, Ordering::Relaxed);
+                                });
+                            }
                         }
                     }
                 }
             }
-        }
 
-        timer.wait();
+            timer.wait();
+        }
     }
 }
 

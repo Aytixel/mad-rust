@@ -1,4 +1,6 @@
-use sysinfo::{ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt};
+use sysinfo::{
+    get_current_pid, PidExt, ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt,
+};
 
 use std::env::current_exe;
 use std::sync::mpsc::{
@@ -45,22 +47,22 @@ impl<T> DualChannel<T> {
     }
 }
 
-pub fn kill_double() {
+pub fn kill_double() -> bool {
     if let Ok(path) = current_exe() {
-        let mut sys = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
-        );
-        let mut find = false;
-        sys.refresh_processes_specifics(ProcessRefreshKind::new());
+        if let Ok(pid) = get_current_pid() {
+            let mut sys = System::new_with_specifics(
+                RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+            );
 
-        for (_, process) in sys.processes() {
-            if process.exe() == path {
-                if find {
-                    process.kill();
-                    break;
+            sys.refresh_processes_specifics(ProcessRefreshKind::new());
+
+            for (process_pid, process) in sys.processes() {
+                if process.exe() == path && pid != *process_pid {
+                    return true;
                 }
-                find = true;
             }
         }
     }
+
+    false
 }
