@@ -1,6 +1,4 @@
-use sysinfo::{
-    get_current_pid, PidExt, ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt,
-};
+use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt};
 
 use std::env::current_exe;
 use std::sync::mpsc::{
@@ -13,6 +11,9 @@ pub struct DualChannel<T> {
     tx: Sender<T>,
     rx: Receiver<T>,
 }
+
+unsafe impl<T> Send for DualChannel<T> {}
+unsafe impl<T> Sync for DualChannel<T> {}
 
 impl<T> DualChannel<T> {
     pub fn new() -> (Self, Self) {
