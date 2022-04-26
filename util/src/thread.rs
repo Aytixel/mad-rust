@@ -10,6 +10,7 @@ use std::time::Duration;
 pub struct DualChannel<T> {
     tx: Sender<T>,
     rx: Receiver<T>,
+    connected: bool,
 }
 
 unsafe impl<T> Send for DualChannel<T> {}
@@ -20,23 +21,62 @@ impl<T> DualChannel<T> {
         let (tx1, rx2) = channel::<T>();
         let (tx2, rx1) = channel::<T>();
 
-        (Self { tx: tx1, rx: rx1 }, Self { tx: tx2, rx: rx2 })
+        (
+            Self {
+                tx: tx1,
+                rx: rx1,
+                connected: true,
+            },
+            Self {
+                tx: tx2,
+                rx: rx2,
+                connected: true,
+            },
+        )
     }
 
-    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
-        self.tx.send(t)
+    pub fn is_connected(&self) -> bool {
+        self.connected
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.rx.try_recv()
+    pub fn send(&mut self, t: T) -> Result<(), SendError<T>> {
+        let result = self.tx.send(t);
+
+        if let Err(_) = result {
+            self.connected = false;
+        }
+
+        result
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
-        self.rx.recv()
+    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        let result = self.rx.try_recv();
+
+        if let Err(TryRecvError::Disconnected) = result {
+            self.connected = false;
+        }
+
+        result
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        self.rx.recv_timeout(timeout)
+    pub fn recv(&mut self) -> Result<T, RecvError> {
+        let result = self.rx.recv();
+
+        if let Err(_) = result {
+            self.connected = false;
+        }
+
+        result
+    }
+
+    pub fn recv_timeout(&mut self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        let result = self.rx.recv_timeout(timeout);
+
+        if let Err(RecvTimeoutError::Disconnected) = result {
+            self.connected = false;
+        }
+
+        result
     }
 
     pub fn iter(&self) -> Iter<'_, T> {
