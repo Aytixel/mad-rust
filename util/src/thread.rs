@@ -4,17 +4,28 @@ use std::env::current_exe;
 use std::sync::mpsc::{
     channel, Iter, Receiver, RecvError, RecvTimeoutError, SendError, Sender, TryIter, TryRecvError,
 };
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug)]
 pub struct DualChannel<T> {
     tx: Sender<T>,
-    rx: Receiver<T>,
+    rx: Arc<Receiver<T>>,
     connected: bool,
 }
 
 unsafe impl<T> Send for DualChannel<T> {}
 unsafe impl<T> Sync for DualChannel<T> {}
+
+impl<T> Clone for DualChannel<T> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            rx: self.rx.clone(),
+            connected: true,
+        }
+    }
+}
 
 impl<T> DualChannel<T> {
     pub fn new() -> (Self, Self) {
@@ -24,12 +35,12 @@ impl<T> DualChannel<T> {
         (
             Self {
                 tx: tx1,
-                rx: rx1,
+                rx: Arc::new(rx1),
                 connected: true,
             },
             Self {
                 tx: tx2,
-                rx: rx2,
+                rx: Arc::new(rx2),
                 connected: true,
             },
         )
