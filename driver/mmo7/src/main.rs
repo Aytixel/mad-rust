@@ -25,6 +25,7 @@ fn main() {
         let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
             VID,
             PID,
+            "MMO7".to_string(),
             3,
             3,
             vec![

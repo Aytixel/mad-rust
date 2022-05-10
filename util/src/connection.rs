@@ -313,6 +313,7 @@ pub mod command {
         command: Command,
         pub vid: u16,
         pub pid: u16,
+        pub device_name: String,
         pub mode_count: u8,
         pub shift_mode_count: u8,
         pub button_name_vec: Vec<String>,
@@ -322,6 +323,7 @@ pub mod command {
         pub fn new(
             vid: u16,
             pid: u16,
+            device_name: String,
             mode_count: u8,
             shift_mode_count: u8,
             button_name_vec: Vec<String>,
@@ -329,6 +331,7 @@ pub mod command {
             let mut command = Command::new(0);
 
             command.add_u32(((vid as u32) << 16) + pid as u32);
+            command.add_string(device_name.clone());
             command.add_byte(mode_count);
             command.add_byte(shift_mode_count);
             command.add_byte(button_name_vec.len() as u8);
@@ -341,6 +344,7 @@ pub mod command {
                 command,
                 vid,
                 pid,
+                device_name,
                 mode_count,
                 shift_mode_count,
                 button_name_vec,
@@ -358,14 +362,16 @@ pub mod command {
                 command: Command::from_bytes(data),
                 vid: 0,
                 pid: 0,
+                device_name: String::new(),
                 mode_count: 0,
                 shift_mode_count: 0,
                 button_name_vec: vec![],
             };
             let vid_pid = self_.command.get_u32();
 
-            self_.pid = vid_pid as u16;
             self_.vid = (vid_pid >> 16) as u16;
+            self_.pid = vid_pid as u16;
+            self_.device_name = self_.command.get_string();
             self_.mode_count = self_.command.get_byte();
             self_.shift_mode_count = self_.command.get_byte();
 
