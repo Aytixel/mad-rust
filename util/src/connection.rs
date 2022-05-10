@@ -123,7 +123,7 @@ pub mod client {
     }
 
     impl Client {
-        pub fn new(connection_start_data: Vec<u8>) -> Self {
+        pub fn new() -> Self {
             let (host, mut child) = DualChannel::<(bool, Vec<u8>)>::new();
 
             spawn(move || {
@@ -139,11 +139,6 @@ pub mod client {
                             let mut last_packet_receive = Instant::now();
 
                             child.send((true, vec![])).ok();
-
-                            socket
-                                .write_all(&(connection_start_data.len() as u64).to_be_bytes())
-                                .ok();
-                            socket.write_all(&connection_start_data).ok();
 
                             'main: loop {
                                 if last_packet_receive.elapsed() > Duration::from_secs(10) {
@@ -216,108 +211,171 @@ pub mod client {
 pub use command::{Command, CommandTrait};
 
 pub mod command {
+    use std::io::{Cursor, Read, Write};
+
     pub trait CommandTrait {
-        fn to_bytes(&self) -> Vec<u8>;
+        fn to_bytes(&mut self) -> Vec<u8>;
 
         fn from_bytes(data: Vec<u8>) -> Self;
     }
 
+    #[derive(Debug)]
     pub struct Command {
-        pub data: Vec<u8>,
+        pub data: Cursor<Vec<u8>>,
         pub id: u8,
     }
 
     impl Command {
         pub fn new(id: u8) -> Self {
             Self {
-                data: vec![],
+                data: Cursor::new(Vec::new()),
                 id: id,
             }
         }
 
         pub fn add_bytes(&mut self, data: &mut Vec<u8>) -> &mut Self {
             self.add_u32(data.len() as u32);
-            self.data.append(data);
+            self.data.write(data).unwrap();
             self
         }
 
         pub fn add_byte(&mut self, data: u8) -> &mut Self {
-            self.data.push(data);
+            self.data.write(&[data]).unwrap();
             self
         }
 
         pub fn add_string(&mut self, data: String) -> &mut Self {
             self.add_u32(data.len() as u32);
-            self.data.append(&mut data.as_bytes().to_vec());
+            self.data.write(&mut data.as_bytes().to_vec()).unwrap();
             self
         }
 
         pub fn add_u32(&mut self, data: u32) -> &mut Self {
-            self.data.append(&mut data.to_be_bytes().to_vec());
-            self
-        }
-
-        pub fn add_i32(&mut self, data: i32) -> &mut Self {
-            self.data.append(&mut data.to_be_bytes().to_vec());
+            self.data.write(&mut data.to_be_bytes().to_vec()).unwrap();
             self
         }
 
         pub fn get_bytes(&mut self) -> Vec<u8> {
-            let number = self.get_u32() as usize;
-            let data = self.data[..number].to_vec();
+            let mut data = vec![0u8; self.get_u32() as usize];
 
-            self.data = self.data[number..].to_vec();
+            self.data.read_exact(&mut data).unwrap();
 
             data
         }
 
         pub fn get_byte(&mut self) -> u8 {
-            let data: u8 = self.data[0];
+            let mut data = [0u8; 1];
 
-            self.data = self.data[0..].to_vec();
+            self.data.read_exact(&mut data).unwrap();
 
-            data
+            data[0]
         }
 
         pub fn get_string(&mut self) -> String {
-            let number = self.get_u32() as usize;
-            let data = self.data[..number].to_vec();
+            let mut data = vec![0u8; self.get_u32() as usize];
 
-            self.data = self.data[number..].to_vec();
+            self.data.read_exact(&mut data).unwrap();
 
             String::from_utf8(data).unwrap()
         }
 
         pub fn get_u32(&mut self) -> u32 {
-            let data: [u8; 4] = self.data[..4].try_into().unwrap();
+            let mut data = [0u8; 4];
 
-            self.data = self.data[4..].to_vec();
+            self.data.read_exact(&mut data).unwrap();
 
             u32::from_be_bytes(data)
-        }
-
-        pub fn get_i32(&mut self) -> i32 {
-            let data: [u8; 4] = self.data[..4].try_into().unwrap();
-
-            self.data = self.data[4..].to_vec();
-
-            i32::from_be_bytes(data)
         }
     }
 
     impl CommandTrait for Command {
-        fn to_bytes(&self) -> Vec<u8> {
+        fn to_bytes(&mut self) -> Vec<u8> {
             let mut data = vec![self.id];
+            let mut cursor_data = vec![0u8; self.data.position() as usize];
 
-            data.append(&mut self.data.clone());
+            self.data.set_position(0);
+            self.data.read_exact(&mut cursor_data).unwrap();
+
+            data.append(&mut cursor_data);
             data
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
             Self {
-                data: data[1..].to_vec(),
+                data: Cursor::new(data[1..].to_vec()),
                 id: data[0],
             }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct DeviceConfigurationDescriptor {
+        command: Command,
+        pub vid: u16,
+        pub pid: u16,
+        pub mode_count: u8,
+        pub shift_mode_count: u8,
+        pub button_name_vec: Vec<String>,
+    }
+
+    impl DeviceConfigurationDescriptor {
+        pub fn new(
+            vid: u16,
+            pid: u16,
+            mode_count: u8,
+            shift_mode_count: u8,
+            button_name_vec: Vec<String>,
+        ) -> Self {
+            let mut command = Command::new(0);
+
+            command.add_u32(((vid as u32) << 16) + pid as u32);
+            command.add_byte(mode_count);
+            command.add_byte(shift_mode_count);
+            command.add_byte(button_name_vec.len() as u8);
+
+            for button_name in button_name_vec.clone() {
+                command.add_string(button_name);
+            }
+
+            Self {
+                command,
+                vid,
+                pid,
+                mode_count,
+                shift_mode_count,
+                button_name_vec,
+            }
+        }
+    }
+
+    impl CommandTrait for DeviceConfigurationDescriptor {
+        fn to_bytes(&mut self) -> Vec<u8> {
+            self.command.to_bytes()
+        }
+
+        fn from_bytes(data: Vec<u8>) -> Self {
+            let mut self_ = Self {
+                command: Command::from_bytes(data),
+                vid: 0,
+                pid: 0,
+                mode_count: 0,
+                shift_mode_count: 0,
+                button_name_vec: vec![],
+            };
+            let vid_pid = self_.command.get_u32();
+
+            self_.pid = vid_pid as u16;
+            self_.vid = (vid_pid >> 16) as u16;
+            self_.mode_count = self_.command.get_byte();
+            self_.shift_mode_count = self_.command.get_byte();
+
+            let button_count = self_.command.get_byte();
+
+            for _ in 0..button_count {
+                self_.button_name_vec.push(self_.command.get_string());
+            }
+
+            self_
         }
     }
 }

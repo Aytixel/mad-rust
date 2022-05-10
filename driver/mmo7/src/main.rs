@@ -5,7 +5,7 @@ use std::thread::spawn;
 use std::time::Duration;
 
 use rusb::{Context, DeviceHandle, UsbContext};
-use util::connection::Client;
+use util::connection::{command::DeviceConfigurationDescriptor, Client, CommandTrait};
 use util::thread::kill_double;
 use util::time::{Timer, TIMEOUT_1S};
 
@@ -22,11 +22,44 @@ struct Endpoint {
 
 fn main() {
     if !kill_double() {
+        let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
+            VID,
+            PID,
+            3,
+            3,
+            vec![
+                "Scroll Button".to_string(),
+                "Left ActionLock".to_string(),
+                "Right ActionLock".to_string(),
+                "Forwards Button".to_string(),
+                "Back Button".to_string(),
+                "Thumb Anticlockwise".to_string(),
+                "Thumb Clockwise".to_string(),
+                "Hat Top".to_string(),
+                "Hat Left".to_string(),
+                "Hat Right".to_string(),
+                "Hat Bottom".to_string(),
+                "Button 1".to_string(),
+                "Button 2".to_string(),
+                "Precision Aim".to_string(),
+                "Button 3".to_string(),
+            ],
+        );
         let client = Client::new();
-        let client_dualchannel = client.dual_channel;
+        let mut client_dualchannel = client.dual_channel;
         let context = Context::new().unwrap();
         let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
         let mut timer = Timer::new(TIMEOUT_1S);
+
+        spawn(move || loop {
+            let (is_running, data) = client_dualchannel.recv().unwrap();
+
+            if is_running && data.len() == 0 {
+                client_dualchannel
+                    .send((true, device_configuration_descriptor.to_bytes()))
+                    .ok();
+            }
+        });
 
         loop {
             for (serial_number, is_running) in device_list.clone().iter() {
@@ -132,7 +165,7 @@ fn run_device(serial_number: String) {
         loop {
             match device_handle.read_interrupt(endpoint.address, &mut buf, Duration::ZERO) {
                 Ok(_) => {
-                    println!("{} : {:?}", serial_number, buf);
+                    //println!("{} : {:?}", serial_number, buf);
                 }
                 Err(rusb::Error::Timeout)
                 | Err(rusb::Error::Pipe)
@@ -140,7 +173,7 @@ fn run_device(serial_number: String) {
                 | Err(rusb::Error::Io) => {
                     buf = [0; 8];
 
-                    println!("{} : {:?}", serial_number, buf);
+                    //println!("{} : {:?}", serial_number, buf);
                 }
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);
