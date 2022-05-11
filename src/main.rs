@@ -9,7 +9,7 @@ use util::thread::kill_double;
 fn main() {
     if !kill_double() {
         let server = Server::new();
-        let server_dualchannel = server.dual_channel;
+        let mut server_dualchannel = server.dual_channel;
         let ui = MainWindow::new();
         let ui_handle = ui.as_weak();
         let timer = Timer::default();
@@ -25,11 +25,26 @@ fn main() {
                 if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
                     if is_running && data.len() > 0 {
                         thread_id_vec.insert(thread_id);
+
                         println!("{:?}", DeviceConfigurationDescriptor::from_bytes(data));
                     }
 
                     if !is_running {
+                        // clearing old thread data
                         thread_id_vec.remove(&thread_id);
+
+                        let mut buffer = server_dualchannel.lock_tx();
+                        let mut i = 0;
+
+                        while i < buffer.len() {
+                            let (thread_id_deleted, _, _) = buffer[i].clone();
+
+                            if thread_id == thread_id_deleted {
+                                buffer.remove(i);
+                            } else {
+                                i += 1;
+                            }
+                        }
                     }
                 }
 
