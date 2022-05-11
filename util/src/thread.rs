@@ -1,101 +1,103 @@
 use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt};
 
 use std::env::current_exe;
-use std::sync::mpsc::{
-    channel, Iter, Receiver, RecvError, RecvTimeoutError, SendError, Sender, TryIter, TryRecvError,
-};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug)]
-pub struct DualChannel<T> {
-    tx: Sender<T>,
-    rx: Arc<Receiver<T>>,
-    connected: bool,
+pub struct DualChannel<T: Clone> {
+    tx: Arc<Mutex<Vec<T>>>,
+    rx: Arc<Mutex<Vec<T>>>,
+    can_receive: Arc<AtomicBool>,
+    can_unlock_rx: bool,
 }
 
-unsafe impl<T> Send for DualChannel<T> {}
-unsafe impl<T> Sync for DualChannel<T> {}
+unsafe impl<T: Clone> Send for DualChannel<T> {}
+unsafe impl<T: Clone> Sync for DualChannel<T> {}
 
-impl<T> Clone for DualChannel<T> {
+impl<T: Clone> Clone for DualChannel<T> {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
             rx: self.rx.clone(),
-            connected: true,
+            can_receive: self.can_receive.clone(),
+            can_unlock_rx: false,
         }
     }
 }
 
-impl<T> DualChannel<T> {
+impl<T: Clone> DualChannel<T> {
     pub fn new() -> (Self, Self) {
-        let (tx1, rx2) = channel::<T>();
-        let (tx2, rx1) = channel::<T>();
+        let host = Arc::new(Mutex::new(Vec::new()));
+        let child = Arc::new(Mutex::new(Vec::new()));
 
         (
             Self {
-                tx: tx1,
-                rx: Arc::new(rx1),
-                connected: true,
+                tx: host.clone(),
+                rx: child.clone(),
+                can_receive: Arc::new(AtomicBool::new(true)),
+                can_unlock_rx: false,
             },
             Self {
-                tx: tx2,
-                rx: Arc::new(rx2),
-                connected: true,
+                tx: child.clone(),
+                rx: host.clone(),
+                can_receive: Arc::new(AtomicBool::new(true)),
+                can_unlock_rx: false,
             },
         )
     }
 
-    pub fn is_connected(&self) -> bool {
-        self.connected
+    pub fn send(&self, t: T) {
+        let mut buffer = match self.tx.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
+        buffer.push(t);
     }
 
-    pub fn send(&mut self, t: T) -> Result<(), SendError<T>> {
-        let result = self.tx.send(t);
+    pub fn recv(&self) -> Option<T> {
+        if self.can_receive.load(Ordering::Relaxed) {
+            let mut buffer = match self.rx.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
 
-        if let Err(_) = result {
-            self.connected = false;
+            if buffer.len() == 0 {
+                return None;
+            }
+
+            Some(buffer.remove(0))
+        } else {
+            None
         }
-
-        result
     }
 
-    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let result = self.rx.try_recv();
-
-        if let Err(TryRecvError::Disconnected) = result {
-            self.connected = false;
+    pub fn lock_tx(&mut self) -> MutexGuard<Vec<T>> {
+        match self.tx.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         }
-
-        result
     }
 
-    pub fn recv(&mut self) -> Result<T, RecvError> {
-        let result = self.rx.recv();
+    pub fn lock_rx(&mut self) -> Option<MutexGuard<Vec<T>>> {
+        if self.can_receive.swap(false, Ordering::Relaxed) {
+            self.can_unlock_rx = true;
 
-        if let Err(_) = result {
-            self.connected = false;
+            Some(match self.rx.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            })
+        } else {
+            None
         }
-
-        result
     }
 
-    pub fn recv_timeout(&mut self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let result = self.rx.recv_timeout(timeout);
-
-        if let Err(RecvTimeoutError::Disconnected) = result {
-            self.connected = false;
+    pub fn unlock_rx(&mut self) {
+        if self.can_unlock_rx {
+            self.can_unlock_rx = false;
+            self.can_receive.store(true, Ordering::Relaxed);
         }
-
-        result
-    }
-
-    pub fn iter(&self) -> Iter<'_, T> {
-        self.rx.iter()
-    }
-
-    pub fn try_iter(&self) -> TryIter<'_, T> {
-        self.rx.try_iter()
     }
 }
 

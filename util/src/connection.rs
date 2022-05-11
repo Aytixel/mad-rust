@@ -33,11 +33,11 @@ pub mod server {
                                     let mut last_packet_send = Instant::now();
                                     let mut last_packet_receive = Instant::now();
 
-                                    child.send((current().id(), true, vec![])).ok();
+                                    child.send((current().id(), true, vec![]));
 
                                     'main: loop {
                                         if last_packet_receive.elapsed() > Duration::from_secs(10) {
-                                            child.send((current().id(), false, vec![])).ok();
+                                            child.send((current().id(), false, vec![]));
                                             break;
                                         }
 
@@ -53,7 +53,7 @@ pub mod server {
 
                                             // connection end
                                             if size == 0 {
-                                                child.send((current().id(), false, vec![])).ok();
+                                                child.send((current().id(), false, vec![]));
                                                 break;
                                             }
 
@@ -64,33 +64,39 @@ pub mod server {
                                                 let mut buffer = vec![0; size as usize];
 
                                                 if let Ok(_) = socket.read_exact(&mut buffer) {
-                                                    child.send((current().id(), true, buffer)).ok();
+                                                    child.send((current().id(), true, buffer));
                                                 }
                                             }
                                         }
 
                                         // data to the client
-                                        loop {
-                                            match child.try_recv() {
-                                                Ok((thread_id, is_running, data)) => {
+                                        if let Some(mut buffer) = child.lock_rx() {
+                                            let mut i = 0;
+
+                                            while i < buffer.len() {
+                                                let (thread_id, is_running, data) =
+                                                    buffer[i].clone();
+
+                                                if thread_id == current().id() {
                                                     if !is_running {
                                                         socket.write_all(&0u64.to_be_bytes()).ok();
                                                         break 'main;
                                                     }
 
-                                                    if thread_id == current().id() {
-                                                        socket
-                                                            .write_all(
-                                                                &(data.len() as u64).to_be_bytes(),
-                                                            )
-                                                            .ok();
-                                                        socket.write_all(&data).ok();
-                                                    }
+                                                    socket
+                                                        .write_all(
+                                                            &(data.len() as u64).to_be_bytes(),
+                                                        )
+                                                        .ok();
+                                                    socket.write_all(&data).ok();
+                                                    buffer.remove(i);
+                                                } else {
+                                                    i += 1;
                                                 }
-                                                _ => break,
                                             }
                                         }
 
+                                        child.unlock_rx();
                                         timer.wait();
                                     }
                                 });
@@ -124,7 +130,7 @@ pub mod client {
 
     impl Client {
         pub fn new() -> Self {
-            let (host, mut child) = DualChannel::<(bool, Vec<u8>)>::new();
+            let (host, child) = DualChannel::<(bool, Vec<u8>)>::new();
 
             spawn(move || {
                 let mut timer = Timer::new(TIMEOUT_1S);
@@ -138,11 +144,11 @@ pub mod client {
                             let mut last_packet_send = Instant::now();
                             let mut last_packet_receive = Instant::now();
 
-                            child.send((true, vec![])).ok();
+                            child.send((true, vec![]));
 
                             'main: loop {
                                 if last_packet_receive.elapsed() > Duration::from_secs(10) {
-                                    child.send((false, vec![])).ok();
+                                    child.send((false, vec![]));
                                     break;
                                 }
 
@@ -158,7 +164,7 @@ pub mod client {
 
                                     // connection end
                                     if size == 0 {
-                                        child.send((false, vec![])).ok();
+                                        child.send((false, vec![]));
                                         break;
                                     }
 
@@ -169,28 +175,25 @@ pub mod client {
                                         let mut buffer = vec![0; size as usize];
 
                                         if let Ok(_) = socket.read_exact(&mut buffer) {
-                                            child.send((true, buffer)).ok();
+                                            child.send((true, buffer));
                                         }
                                     }
                                 }
 
                                 // data to the server
                                 loop {
-                                    match child.try_recv() {
-                                        Ok((is_running, data)) => {
-                                            if !is_running {
-                                                socket.write_all(&0u64.to_be_bytes()).ok();
-                                                break 'main;
-                                            }
-
-                                            socket
-                                                .write_all(&(data.len() as u64).to_be_bytes())
-                                                .ok();
-                                            socket.write_all(&data).ok();
-
-                                            last_packet_send = Instant::now();
+                                    if let Some((is_running, data)) = child.recv() {
+                                        if !is_running {
+                                            socket.write_all(&0u64.to_be_bytes()).ok();
+                                            break 'main;
                                         }
-                                        _ => break,
+
+                                        socket.write_all(&(data.len() as u64).to_be_bytes()).ok();
+                                        socket.write_all(&data).ok();
+
+                                        last_packet_send = Instant::now();
+                                    } else {
+                                        break;
                                     }
                                 }
 

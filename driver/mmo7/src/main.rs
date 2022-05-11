@@ -47,18 +47,20 @@ fn main() {
             ],
         );
         let client = Client::new();
-        let mut client_dualchannel = client.dual_channel;
+        let client_dualchannel = client.dual_channel;
         let context = Context::new().unwrap();
         let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
         let mut timer = Timer::new(TIMEOUT_1S);
 
         spawn(move || loop {
-            let (is_running, data) = client_dualchannel.recv().unwrap();
-
-            if is_running && data.len() == 0 {
-                client_dualchannel
-                    .send((true, device_configuration_descriptor.to_bytes()))
-                    .ok();
+            if let Some((is_running, data)) = client_dualchannel.recv() {
+                if is_running {
+                    if data.len() == 0 {
+                        client_dualchannel.send((true, device_configuration_descriptor.to_bytes()));
+                    } else {
+                        println!("{:?}", data);
+                    }
+                }
             }
         });
 
