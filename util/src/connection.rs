@@ -36,11 +36,13 @@ pub mod server {
                                     child.send((current().id(), true, vec![]));
 
                                     'main: loop {
+                                        // timeout packet
                                         if last_packet_receive.elapsed() > Duration::from_secs(10) {
                                             child.send((current().id(), false, vec![]));
                                             break;
                                         }
 
+                                        // life packet
                                         if last_packet_send.elapsed() > Duration::from_secs(1) {
                                             socket.write_all(&u64::MAX.to_be_bytes()).ok();
 
@@ -147,11 +149,13 @@ pub mod client {
                             child.send((true, vec![]));
 
                             'main: loop {
+                                // timeout packet
                                 if last_packet_receive.elapsed() > Duration::from_secs(10) {
                                     child.send((false, vec![]));
                                     break;
                                 }
 
+                                // life packet
                                 if last_packet_send.elapsed() > Duration::from_secs(1) {
                                     socket.write_all(&u64::MAX.to_be_bytes()).ok();
 
