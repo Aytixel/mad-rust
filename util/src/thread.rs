@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub struct DualChannel<T: Clone> {
     tx: Arc<Mutex<Vec<T>>>,
     rx: Arc<Mutex<Vec<T>>>,
+    can_send: Arc<AtomicBool>,
+    can_unlock_tx: bool,
     can_receive: Arc<AtomicBool>,
     can_unlock_rx: bool,
 }
@@ -20,6 +22,8 @@ impl<T: Clone> Clone for DualChannel<T> {
         Self {
             tx: self.tx.clone(),
             rx: self.rx.clone(),
+            can_send: self.can_send.clone(),
+            can_unlock_tx: false,
             can_receive: self.can_receive.clone(),
             can_unlock_rx: false,
         }
@@ -30,18 +34,24 @@ impl<T: Clone> DualChannel<T> {
     pub fn new() -> (Self, Self) {
         let host = Arc::new(Mutex::new(Vec::new()));
         let child = Arc::new(Mutex::new(Vec::new()));
+        let host_can_lock = Arc::new(AtomicBool::new(true));
+        let child_can_lock = Arc::new(AtomicBool::new(true));
 
         (
             Self {
                 tx: host.clone(),
                 rx: child.clone(),
-                can_receive: Arc::new(AtomicBool::new(true)),
+                can_send: host_can_lock.clone(),
+                can_unlock_tx: false,
+                can_receive: child_can_lock.clone(),
                 can_unlock_rx: false,
             },
             Self {
-                tx: child.clone(),
-                rx: host.clone(),
-                can_receive: Arc::new(AtomicBool::new(true)),
+                tx: child,
+                rx: host,
+                can_send: child_can_lock,
+                can_unlock_tx: false,
+                can_receive: host_can_lock,
                 can_unlock_rx: false,
             },
         )
@@ -73,10 +83,23 @@ impl<T: Clone> DualChannel<T> {
         }
     }
 
-    pub fn lock_tx(&mut self) -> MutexGuard<Vec<T>> {
-        match self.tx.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
+    pub fn lock_tx(&mut self) -> Option<MutexGuard<Vec<T>>> {
+        if self.can_send.swap(false, Ordering::Relaxed) {
+            self.can_unlock_tx = true;
+
+            Some(match self.tx.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn unlock_tx(&mut self) {
+        if self.can_unlock_tx {
+            self.can_unlock_tx = false;
+            self.can_send.store(true, Ordering::Relaxed);
         }
     }
 

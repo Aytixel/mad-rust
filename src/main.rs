@@ -33,18 +33,21 @@ fn main() {
                         // clearing old thread data
                         thread_id_vec.remove(&thread_id);
 
-                        let mut buffer = server_dualchannel.lock_tx();
-                        let mut i = 0;
+                        if let Some(mut buffer) = server_dualchannel.lock_tx() {
+                            let mut i = 0;
 
-                        while i < buffer.len() {
-                            let (thread_id_deleted, _, _) = buffer[i].clone();
+                            while i < buffer.len() {
+                                let (thread_id_deleted, _, _) = buffer[i].clone();
 
-                            if thread_id == thread_id_deleted {
-                                buffer.remove(i);
-                            } else {
-                                i += 1;
+                                if thread_id == thread_id_deleted {
+                                    buffer.remove(i);
+                                } else {
+                                    i += 1;
+                                }
                             }
                         }
+
+                        server_dualchannel.unlock_tx();
                     }
                 }
 
