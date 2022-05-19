@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::env::current_exe;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::spawn;
@@ -26,6 +28,14 @@ fn main() {
             VID,
             PID,
             "MMO7".to_string(),
+            current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(Path::new("icon.png"))
+                .to_str()
+                .unwrap()
+                .to_string(),
             3,
             3,
             vec![
@@ -168,7 +178,7 @@ fn run_device(serial_number: String) {
         loop {
             match device_handle.read_interrupt(endpoint.address, &mut buf, Duration::ZERO) {
                 Ok(_) => {
-                    //println!("{} : {:?}", serial_number, buf);
+                    println!("{} : {:?}", serial_number, buf);
                 }
                 Err(rusb::Error::Timeout)
                 | Err(rusb::Error::Pipe)
@@ -176,7 +186,7 @@ fn run_device(serial_number: String) {
                 | Err(rusb::Error::Io) => {
                     buf = [0; 8];
 
-                    //println!("{} : {:?}", serial_number, buf);
+                    println!("{} : {:?}", serial_number, buf);
                 }
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);

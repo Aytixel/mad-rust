@@ -1,6 +1,7 @@
 slint::include_modules!();
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::thread::ThreadId;
 
 use slint::{Timer, TimerMode};
 use util::connection::{command::DeviceConfigurationDescriptor, CommandTrait, Server};
@@ -13,8 +14,9 @@ fn main() {
         let ui = MainWindow::new();
         let ui_handle = ui.as_weak();
         let timer = Timer::default();
-        let mut thread_id_vec = HashSet::new();
-        let mut test: u16 = 0;
+        let mut thread_id_hashset = HashSet::new();
+        let mut device_configuration_descriptor_hashmap =
+            HashMap::<ThreadId, DeviceConfigurationDescriptor>::new();
 
         timer.start(
             TimerMode::Repeated,
@@ -24,14 +26,15 @@ fn main() {
 
                 if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
                     if is_running && data.len() > 0 {
-                        thread_id_vec.insert(thread_id);
-
-                        println!("{:?}", DeviceConfigurationDescriptor::from_bytes(data));
+                        thread_id_hashset.insert(thread_id);
+                        device_configuration_descriptor_hashmap
+                            .insert(thread_id, DeviceConfigurationDescriptor::from_bytes(data));
                     }
 
                     if !is_running {
                         // clearing old thread data
-                        thread_id_vec.remove(&thread_id);
+                        thread_id_hashset.remove(&thread_id);
+                        device_configuration_descriptor_hashmap.remove(&thread_id);
 
                         if let Some(mut buffer) = server_dualchannel.lock_tx() {
                             let mut i = 0;
@@ -49,15 +52,6 @@ fn main() {
 
                         server_dualchannel.unlock_tx();
                     }
-                }
-
-                for thread_id in thread_id_vec.clone() {
-                    server_dualchannel.send((thread_id, true, vec![test as u8, 42, 125]));
-                }
-
-                test += 1;
-                if test == 256 {
-                    test = 0;
                 }
             },
         );
