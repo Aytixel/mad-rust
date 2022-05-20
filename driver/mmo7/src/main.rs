@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::env::current_exe;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
 
 use rusb::{Context, DeviceHandle, UsbContext};
-use util::connection::{command::DeviceConfigurationDescriptor, Client, CommandTrait};
+use util::connection::{command::*, Client, CommandTrait};
 use util::thread::kill_double;
 use util::time::{Timer, TIMEOUT_1S};
 
@@ -59,22 +59,45 @@ fn main() {
         let client = Client::new();
         let client_dualchannel = client.dual_channel;
         let context = Context::new().unwrap();
-        let mut device_list: HashMap<String, Arc<AtomicBool>> = HashMap::new();
+        let device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let device_list_mutex_clone = device_list_mutex.clone();
         let mut timer = Timer::new(TIMEOUT_1S);
 
-        spawn(move || loop {
-            if let Some((is_running, data)) = client_dualchannel.recv() {
-                if is_running {
-                    if data.len() == 0 {
-                        client_dualchannel.send((true, device_configuration_descriptor.to_bytes()));
-                    } else {
-                        println!("{:?}", data);
+        spawn(move || {
+            let mut timer = Timer::new(Duration::from_millis(50));
+
+            loop {
+                if let Some((is_running, data)) = client_dualchannel.recv() {
+                    if is_running {
+                        if data.len() == 0 {
+                            client_dualchannel
+                                .send((true, device_configuration_descriptor.to_bytes()));
+
+                            let device_list_clone = device_list_mutex_clone.lock().unwrap();
+                            let mut serial_number_vec = vec![];
+
+                            for (serial_number, is_running) in device_list_clone.iter() {
+                                if (*is_running).load(Ordering::Relaxed) {
+                                    serial_number_vec.push(serial_number.clone());
+                                }
+                            }
+
+                            client_dualchannel
+                                .send((true, DeviceList::new(serial_number_vec).to_bytes()));
+                        } else {
+                            println!("{:?}", data);
+                        }
                     }
                 }
+
+                timer.wait();
             }
         });
 
         loop {
+            let mut device_list = device_list_mutex.lock().unwrap();
+
             for (serial_number, is_running) in device_list.clone().iter() {
                 if !(*is_running).load(Ordering::Relaxed) {
                     device_list.remove(serial_number);
@@ -178,7 +201,7 @@ fn run_device(serial_number: String) {
         loop {
             match device_handle.read_interrupt(endpoint.address, &mut buf, Duration::ZERO) {
                 Ok(_) => {
-                    println!("{} : {:?}", serial_number, buf);
+                    //println!("{} : {:?}", serial_number, buf);
                 }
                 Err(rusb::Error::Timeout)
                 | Err(rusb::Error::Pipe)
@@ -186,7 +209,7 @@ fn run_device(serial_number: String) {
                 | Err(rusb::Error::Io) => {
                     buf = [0; 8];
 
-                    println!("{} : {:?}", serial_number, buf);
+                    //println!("{} : {:?}", serial_number, buf);
                 }
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);

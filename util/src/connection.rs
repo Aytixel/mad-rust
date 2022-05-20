@@ -226,7 +226,7 @@ pub mod command {
         fn from_bytes(data: Vec<u8>) -> Self;
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Default)]
     pub struct Command {
         pub data: Cursor<Vec<u8>>,
         pub id: u8,
@@ -315,18 +315,72 @@ pub mod command {
         }
     }
 
-    #[derive(Debug)]
-    pub enum CommandId {
-        DeviceConfigurationDescriptor,
+    const DEVICE_CONFIGURATION_DESCRIPTOR_ID: u8 = 0;
+    const DEVICE_LIST_ID: u8 = 1;
+    const UNKNOWN_ID: u8 = 255;
+
+    #[derive(Debug, Clone)]
+    pub enum Commands {
+        DeviceConfigurationDescriptor(DeviceConfigurationDescriptor),
+        DeviceList(DeviceList),
+        Unknown,
     }
 
-    impl CommandId {
+    impl Commands {
         pub fn test(self, value: &Vec<u8>) -> bool {
-            value[0] == self as u8
+            value[0] == self.into()
         }
     }
 
-    #[derive(Debug)]
+    impl Into<u8> for Commands {
+        fn into(self) -> u8 {
+            match self {
+                Self::DeviceConfigurationDescriptor(_) => DEVICE_CONFIGURATION_DESCRIPTOR_ID,
+                Self::DeviceList(_) => DEVICE_LIST_ID,
+                Self::Unknown => UNKNOWN_ID,
+            }
+        }
+    }
+
+    impl From<u8> for Commands {
+        fn from(value: u8) -> Self {
+            match value {
+                DEVICE_CONFIGURATION_DESCRIPTOR_ID => {
+                    Self::DeviceConfigurationDescriptor(DeviceConfigurationDescriptor::default())
+                }
+                DEVICE_LIST_ID => Self::DeviceList(DeviceList::default()),
+                _ => Self::Unknown,
+            }
+        }
+    }
+
+    impl From<Vec<u8>> for Commands {
+        fn from(value: Vec<u8>) -> Self {
+            match value[0] {
+                DEVICE_CONFIGURATION_DESCRIPTOR_ID => Self::DeviceConfigurationDescriptor(
+                    DeviceConfigurationDescriptor::from_bytes(value),
+                ),
+                DEVICE_LIST_ID => Self::DeviceList(DeviceList::from_bytes(value)),
+                _ => Self::Unknown,
+            }
+        }
+    }
+
+    impl PartialEq<u8> for Commands {
+        fn eq(&self, other: &u8) -> bool {
+            let value: u8 = self.clone().into();
+
+            value == *other
+        }
+    }
+
+    impl PartialEq<Vec<u8>> for Commands {
+        fn eq(&self, other: &Vec<u8>) -> bool {
+            *self == other[0]
+        }
+    }
+
+    #[derive(Debug, Clone, Default)]
     pub struct DeviceConfigurationDescriptor {
         command: Command,
         pub vid: u16,
@@ -348,7 +402,7 @@ pub mod command {
             shift_mode_count: u8,
             button_name_vec: Vec<String>,
         ) -> Self {
-            let mut command = Command::new(0);
+            let mut command = Command::new(DEVICE_CONFIGURATION_DESCRIPTOR_ID);
 
             command.add_u32(((vid as u32) << 16) + pid as u32);
             command.add_string(device_name.clone());
@@ -403,6 +457,49 @@ pub mod command {
 
             for _ in 0..button_count {
                 self_.button_name_vec.push(self_.command.get_string());
+            }
+
+            self_
+        }
+    }
+
+    #[derive(Debug, Clone, Default)]
+    pub struct DeviceList {
+        command: Command,
+        pub serial_number_vec: Vec<String>,
+    }
+
+    impl DeviceList {
+        pub fn new(serial_number_vec: Vec<String>) -> Self {
+            let mut command = Command::new(DEVICE_LIST_ID);
+
+            command.add_byte(serial_number_vec.len() as u8);
+
+            for serial_number in serial_number_vec.clone() {
+                command.add_string(serial_number);
+            }
+
+            Self {
+                command,
+                serial_number_vec,
+            }
+        }
+    }
+
+    impl CommandTrait for DeviceList {
+        fn to_bytes(&mut self) -> Vec<u8> {
+            self.command.to_bytes()
+        }
+
+        fn from_bytes(data: Vec<u8>) -> Self {
+            let mut self_ = Self {
+                command: Command::from_bytes(data),
+                serial_number_vec: vec![],
+            };
+            let serial_number_count = self_.command.get_byte();
+
+            for _ in 0..serial_number_count {
+                self_.serial_number_vec.push(self_.command.get_string());
             }
 
             self_
