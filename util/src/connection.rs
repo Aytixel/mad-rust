@@ -316,6 +316,17 @@ pub mod command {
     }
 
     #[derive(Debug)]
+    pub enum CommandId {
+        DeviceConfigurationDescriptor,
+    }
+
+    impl CommandId {
+        pub fn test(self, value: &Vec<u8>) -> bool {
+            value[0] == self as u8
+        }
+    }
+
+    #[derive(Debug)]
     pub struct DeviceConfigurationDescriptor {
         command: Command,
         pub vid: u16,
