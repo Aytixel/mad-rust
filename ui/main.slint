@@ -1,29 +1,30 @@
 import "./font/OpenSans.ttf";
 import { Button, VerticalBox } from "std-widgets.slint";
-import { DeviceSelectionWindow } from "./device_selection.slint";
+import { DeviceSelectionWindow, DeviceData } from "./device_selection.slint";
 
 struct State := {
     name: string
 }
 
 export MainWindow := Window {
-    title: "Mad Rust";
-    icon: @image-url("");
-    default-font-family: "OpenSans";
-
     property <[State]> app_states: [
         {name: "Device selection"}
     ];
     property <int> app_state: 0;
 
-    Text { 
-        text: parent.app_states[app_state].name;
-        color: green;
-    }
+    // device selection window
+    property <[DeviceData]> device_list;
+
+    title: "Mad Rust - " + app_states[app_state].name;
+    icon: @image-url("");
+    default-font-family: "OpenSans";
+    background: #212121;
+    min-height: 300px;
+    min-width: 500px;
 
     if app_state == 0: Rectangle {
         DeviceSelectionWindow {
-
+            device_list_: device_list;
         }
     }
 }

@@ -1,17 +1,72 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+export struct DeviceData := {
+    icon: image,
+    name: string,
+    serial_number: string
+}
 
-export DeviceSelectionWindow := Window {
-    property<int> counter: 0;
-    callback request-increase-value();
-    VerticalBox { 
-        Text {
-            text: "Counter: \{counter}";
+Device := Rectangle {
+    callback clicked;
+    property <image> icon;
+    property <string> name;
+    property <string> serial_number;
+
+    x: 25px;
+    y: 25px;
+    height: 200px;
+    width: 200px;
+    opacity: 1;
+
+    Rectangle {
+        height: 200px;
+        width: 200px;
+        opacity: 1;
+        background: #242424;
+        border-radius: 5px;
+        drop-shadow-offset-x: 0.5px;
+        drop-shadow-offset-y: 0.5px;
+        drop-shadow-blur: 7.5px;
+        drop-shadow-color: #424242;
+    }
+
+    Image {
+        x: 25px;
+        y: 25px;
+        height:  150px;
+        width: 150px;
+        image-fit: contain;
+        source: icon;
+    }
+
+    Text {
+        x: 5px;
+        y: 5px;
+        text: name;
+        color: #E0E0E0;
+        font-size: 14pt;
+        font-weight: 600;
+    }
+
+    Text {
+        x: 5px;
+        y: 10px + 14pt;
+        text: serial_number;
+        color: #9E9E9E;
+        font-weight: 700;
+    }
+
+    TouchArea {
+        clicked => {
+            root.clicked();
         }
-        Button {
-            text: "Increase value";
-            clicked => { 
-                request-increase-value();
-            }
-        }
-     }
+    }
+}
+
+export DeviceSelectionWindow := Rectangle {
+    property <[DeviceData]> device_list_;
+
+    for device in device_list_ : Device {
+        icon: device.icon;
+        name: device.name;
+        serial_number: device.serial_number;
+    }
 }
