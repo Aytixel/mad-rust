@@ -1,14 +1,15 @@
 slint::include_modules!();
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::rc::Rc;
 use std::thread::ThreadId;
 use std::time::Duration;
 
-use slint::{Timer, TimerMode};
+use slint::{Image, SharedString, Timer, TimerMode, VecModel};
 use util::connection::{command::*, Server};
 use util::thread::kill_double;
 
-#[derive(Debug)]
 struct Driver {
     device_configuration_descriptor: DeviceConfigurationDescriptor,
     device_list: DeviceList,
@@ -23,6 +24,17 @@ impl Driver {
     }
 }
 
+#[derive(Debug, Clone)]
+enum AppState {
+    DeviceSelectionWindow,
+}
+
+impl Into<i32> for AppState {
+    fn into(self) -> i32 {
+        self as i32
+    }
+}
+
 fn main() {
     if !kill_double() {
         let server = Server::new();
@@ -33,31 +45,65 @@ fn main() {
         let mut thread_id_hashset = HashSet::new();
         let mut driver_hashmap = HashMap::<ThreadId, Driver>::new();
 
+        ui.set_app_state(AppState::DeviceSelectionWindow.into());
+
         timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
-            let _ui = ui_handle.unwrap();
+            let ui = ui_handle.upgrade().unwrap();
 
             if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
-                if is_running && data.len() > 0 {
-                    match Commands::from(data) {
-                        Commands::DeviceConfigurationDescriptor(
-                            device_configuration_descriptor,
-                        ) => {
-                            thread_id_hashset.insert(thread_id);
-                            driver_hashmap
-                                .insert(thread_id, Driver::new(device_configuration_descriptor));
-                        }
-                        Commands::DeviceList(device_list) => {
-                            if let Some(driver) = driver_hashmap.get_mut(&thread_id) {
-                                println!("{:?}", device_list);
-
-                                driver.device_list = device_list;
+                if is_running {
+                    if data.len() > 0 {
+                        match Commands::from(data) {
+                            Commands::DeviceConfigurationDescriptor(
+                                device_configuration_descriptor,
+                            ) => {
+                                // initiate driver data
+                                thread_id_hashset.insert(thread_id);
+                                driver_hashmap.insert(
+                                    thread_id,
+                                    Driver::new(device_configuration_descriptor),
+                                );
                             }
-                        }
-                        _ => {}
-                    }
-                }
+                            Commands::DeviceList(device_list) => {
+                                if let Some(driver) = driver_hashmap.get_mut(&thread_id) {
+                                    driver.device_list = device_list;
 
-                if !is_running {
+                                    let mut device_list: Vec<DeviceData> = vec![];
+
+                                    for driver in driver_hashmap.values() {
+                                        if let Ok(icon) = Image::load_from_path(Path::new(
+                                            &driver
+                                                .device_configuration_descriptor
+                                                .device_icon_path,
+                                        )) {
+                                            for serial_number in
+                                                driver.device_list.serial_number_vec.clone()
+                                            {
+                                                device_list.push(DeviceData {
+                                                    icon: icon.clone(),
+                                                    name: SharedString::from(
+                                                        driver
+                                                            .device_configuration_descriptor
+                                                            .device_name
+                                                            .clone(),
+                                                    ),
+                                                    serial_number: SharedString::from(
+                                                        serial_number,
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                    }
+
+                                    ui.set_device_list(
+                                        Rc::new(VecModel::from(device_list)).clone().into(),
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
                     // clearing old thread data
                     thread_id_hashset.remove(&thread_id);
                     driver_hashmap.remove(&thread_id);
