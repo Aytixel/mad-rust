@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use rusb::{Context, DeviceHandle, UsbContext};
 use util::connection::{command::*, Client, CommandTrait};
-use util::thread::kill_double;
+use util::thread::{kill_double, DualChannel};
 use util::time::{Timer, TIMEOUT_1S};
 
 const VID: u16 = 0x0738;
@@ -20,6 +20,11 @@ struct Endpoint {
     iface: u8,
     setting: u8,
     address: u8,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    DeviceListUpdate,
 }
 
 fn main() {
@@ -62,10 +67,27 @@ fn main() {
         let device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let device_list_mutex_clone = device_list_mutex.clone();
+        let (host, child) = DualChannel::<Message>::new();
         let mut timer = Timer::new(TIMEOUT_1S);
 
         spawn(move || {
-            let mut timer = Timer::new(Duration::from_millis(50));
+            let mut timer = Timer::new(Duration::from_millis(100));
+
+            let update_device_list = || {
+                let device_list_clone = match device_list_mutex_clone.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                let mut serial_number_vec = vec![];
+
+                for (serial_number, is_running) in device_list_clone.iter() {
+                    if (*is_running).load(Ordering::Relaxed) {
+                        serial_number_vec.push(serial_number.clone());
+                    }
+                }
+
+                client_dualchannel.send((true, DeviceList::new(serial_number_vec).to_bytes()));
+            };
 
             loop {
                 if let Some((is_running, data)) = client_dualchannel.recv() {
@@ -74,23 +96,16 @@ fn main() {
                             client_dualchannel
                                 .send((true, device_configuration_descriptor.to_bytes()));
 
-                            let device_list_clone = match device_list_mutex_clone.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => poisoned.into_inner(),
-                            };
-                            let mut serial_number_vec = vec![];
-
-                            for (serial_number, is_running) in device_list_clone.iter() {
-                                if (*is_running).load(Ordering::Relaxed) {
-                                    serial_number_vec.push(serial_number.clone());
-                                }
-                            }
-
-                            client_dualchannel
-                                .send((true, DeviceList::new(serial_number_vec).to_bytes()));
+                            update_device_list();
                         } else {
                             println!("{:?}", data);
                         }
+                    }
+                }
+
+                if let Some(message) = child.recv() {
+                    match message {
+                        Message::DeviceListUpdate => update_device_list(),
                     }
                 }
 
@@ -124,14 +139,17 @@ fn main() {
                             .ok()
                         {
                             if let None = device_list.get(&serial_number) {
+                                let host = host.clone();
                                 let is_running = Arc::new(AtomicBool::new(true));
 
                                 device_list.insert(serial_number.clone(), is_running.clone());
 
                                 spawn(move || {
-                                    run_device(serial_number);
+                                    run_device(serial_number, host.clone());
 
                                     (*is_running).store(false, Ordering::Relaxed);
+
+                                    host.send(Message::DeviceListUpdate);
                                 });
                             }
                         }
@@ -169,7 +187,7 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
     None
 }
 
-fn run_device(serial_number: String) {
+fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
         let device = device_handle.device();
         let config_descriptor = device.config_descriptor(0).unwrap();
@@ -182,8 +200,6 @@ fn run_device(serial_number: String) {
             setting: interface_descriptor.setting_number(),
             address: endpoint_descriptor.address(),
         };
-
-        println!("{} connected", serial_number);
 
         let has_kernel_driver = match device_handle.kernel_driver_active(endpoint.iface) {
             Ok(true) => {
@@ -200,6 +216,10 @@ fn run_device(serial_number: String) {
         device_handle
             .set_alternate_setting(endpoint.iface, endpoint.setting)
             .unwrap();
+
+        println!("{} connected", serial_number);
+
+        dual_channel.send(Message::DeviceListUpdate);
 
         let mut buf = [0; 8];
         let mut timer = Timer::new(Duration::from_micros(500));

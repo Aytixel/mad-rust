@@ -47,7 +47,11 @@ fn main() {
                                 .insert(thread_id, Driver::new(device_configuration_descriptor));
                         }
                         Commands::DeviceList(device_list) => {
-                            driver_hashmap.get_mut(&thread_id).unwrap().device_list = device_list;
+                            if let Some(driver) = driver_hashmap.get_mut(&thread_id) {
+                                println!("{:?}", device_list);
+
+                                driver.device_list = device_list;
+                            }
                         }
                         _ => {}
                     }

@@ -28,7 +28,7 @@ pub mod server {
 
                                 spawn(move || {
                                     // data communication handling
-                                    let mut timer = Timer::new(Duration::from_millis(200));
+                                    let mut timer = Timer::new(Duration::from_millis(100));
                                     let mut size_buffer = [0; 8];
                                     let mut last_packet_send = Instant::now();
                                     let mut last_packet_receive = Instant::now();
