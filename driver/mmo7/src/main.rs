@@ -1,3 +1,5 @@
+mod mapper;
+
 use std::collections::HashMap;
 use std::env::current_exe;
 use std::path::Path;
@@ -6,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
 
+use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
 use util::connection::{command::*, Client, CommandTrait};
 use util::thread::{kill_double, DualChannel};
@@ -221,22 +224,20 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
 
         dual_channel.send(Message::DeviceListUpdate);
 
-        let mut buf = [0; 8];
+        let mut buffer = [0; 8];
         let mut timer = Timer::new(Duration::from_micros(500));
+        let mut mapper = Mapper::new();
 
         loop {
-            match device_handle.read_interrupt(endpoint.address, &mut buf, Duration::ZERO) {
+            match device_handle.read_interrupt(endpoint.address, &mut buffer, Duration::ZERO) {
                 Ok(_) => {
-                    //println!("{} : {:?}", serial_number, buf);
+                    //println!("{} : {:?}", serial_number, buffer);
+                    mapper.emulate(&buffer);
                 }
                 Err(rusb::Error::Timeout)
                 | Err(rusb::Error::Pipe)
                 | Err(rusb::Error::Overflow)
-                | Err(rusb::Error::Io) => {
-                    buf = [0; 8];
-
-                    //println!("{} : {:?}", serial_number, buf);
-                }
+                | Err(rusb::Error::Io) => {}
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);
                     break;
