@@ -37,7 +37,7 @@ pub mod server {
 
                                     'main: loop {
                                         // timeout packet
-                                        if last_packet_receive.elapsed() > Duration::from_secs(10) {
+                                        if last_packet_receive.elapsed() > Duration::from_secs(5) {
                                             child.send((current().id(), false, vec![]));
                                             break;
                                         }
@@ -150,7 +150,7 @@ pub mod client {
 
                             'main: loop {
                                 // timeout packet
-                                if last_packet_receive.elapsed() > Duration::from_secs(10) {
+                                if last_packet_receive.elapsed() > Duration::from_secs(5) {
                                     child.send((false, vec![]));
                                     break;
                                 }
