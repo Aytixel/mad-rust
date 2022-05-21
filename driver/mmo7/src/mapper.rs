@@ -25,9 +25,9 @@ impl Mapper {
     fn basic_emulation(&mut self, buffer: &[u8]) {
         // button emulation
         let button_state = [
-            buffer[0] & 0x01 > 0,
-            buffer[0] & 0x02 > 0,
-            buffer[0] & 0x04 > 0,
+            (buffer[0] & 1) > 0,
+            (buffer[0] & 2) > 0,
+            (buffer[0] & 4) > 0,
         ];
 
         if button_state[0] != self.button_state[0] {
