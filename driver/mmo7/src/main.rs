@@ -74,7 +74,10 @@ fn main() {
                             client_dualchannel
                                 .send((true, device_configuration_descriptor.to_bytes()));
 
-                            let device_list_clone = device_list_mutex_clone.lock().unwrap();
+                            let device_list_clone = match device_list_mutex_clone.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => poisoned.into_inner(),
+                            };
                             let mut serial_number_vec = vec![];
 
                             for (serial_number, is_running) in device_list_clone.iter() {
@@ -96,7 +99,10 @@ fn main() {
         });
 
         loop {
-            let mut device_list = device_list_mutex.lock().unwrap();
+            let mut device_list = match device_list_mutex.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
 
             for (serial_number, is_running) in device_list.clone().iter() {
                 if !(*is_running).load(Ordering::Relaxed) {
