@@ -2,8 +2,8 @@ use enigo::{Enigo, MouseButton, MouseControllable};
 
 pub struct Mapper {
     enigo: Enigo,
-    pub mode: u8,
-    pub shift_mode: u8,
+    pub mode: Option<u8>,
+    pub shift_mode: Option<u8>,
     button_state: [bool; 3],
 }
 
@@ -11,8 +11,8 @@ impl Mapper {
     pub fn new() -> Self {
         Self {
             enigo: Enigo::new(),
-            mode: 0,
-            shift_mode: 0,
+            mode: Some(0),
+            shift_mode: None,
             button_state: [false, false, false],
         }
     }
@@ -73,11 +73,14 @@ impl Mapper {
         );
 
         // wheel emulation
-        if buffer[7] < 128 {
+        /* bug on windows
+        if buffer[7] == 1 {
             self.enigo.mouse_click(MouseButton::ScrollUp)
-        } else {
+        }
+        if buffer[7] == 255 {
             self.enigo.mouse_click(MouseButton::ScrollDown)
         }
+        */
     }
 
     fn mapped_emulation(&mut self, buffer: &[u8]) {}
