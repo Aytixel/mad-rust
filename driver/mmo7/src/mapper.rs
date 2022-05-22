@@ -73,14 +73,12 @@ impl Mapper {
         );
 
         // wheel emulation
-        /* bug on windows
         if buffer[7] == 1 {
-            self.enigo.mouse_click(MouseButton::ScrollUp)
+            self.enigo.mouse_scroll_y(-1);
         }
         if buffer[7] == 255 {
-            self.enigo.mouse_click(MouseButton::ScrollDown)
+            self.enigo.mouse_scroll_y(1);
         }
-        */
     }
 
     fn mapped_emulation(&mut self, buffer: &[u8]) {}
