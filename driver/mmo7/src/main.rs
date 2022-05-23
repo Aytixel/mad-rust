@@ -75,12 +75,18 @@ fn main() {
 
         spawn(move || {
             let mut timer = Timer::new(Duration::from_millis(100));
+            let mut device_list_clone = match device_list_mutex_clone.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+
+            for (serial_number, is_running) in device_list_clone.clone().iter() {
+                if !(*is_running).load(Ordering::Relaxed) {
+                    device_list_clone.remove(serial_number);
+                }
+            }
 
             let update_device_list = || {
-                let device_list_clone = match device_list_mutex_clone.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
                 let mut serial_number_vec = vec![];
 
                 for (serial_number, is_running) in device_list_clone.iter() {
@@ -121,12 +127,6 @@ fn main() {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-
-            for (serial_number, is_running) in device_list.clone().iter() {
-                if !(*is_running).load(Ordering::Relaxed) {
-                    device_list.remove(serial_number);
-                }
-            }
 
             for device in context.devices().unwrap().iter() {
                 let device_descriptor = device.device_descriptor().unwrap();
@@ -225,11 +225,15 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
         dual_channel.send(Message::DeviceListUpdate);
 
         let mut buffer = [0; 8];
-        let mut timer = Timer::new(Duration::from_micros(500));
+        let mut timer = Timer::new(Duration::from_micros(100));
         let mut mapper = Mapper::new();
 
         loop {
-            match device_handle.read_interrupt(endpoint.address, &mut buffer, Duration::ZERO) {
+            match device_handle.read_interrupt(
+                endpoint.address,
+                &mut buffer,
+                Duration::from_millis(1),
+            ) {
                 Ok(_) => {
                     //println!("{} : {:?}", serial_number, buffer);
                     mapper.emulate(&buffer);
