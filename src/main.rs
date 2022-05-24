@@ -94,21 +94,6 @@ fn run_connection(
                     // clearing old thread data
                     driver_hashmap.remove(&thread_id);
 
-                    {
-                        let mut buffer = server_dualchannel.lock_tx();
-                        let mut i = 0;
-
-                        while i < buffer.len() {
-                            let (thread_id_deleted, _, _) = buffer[i].clone();
-
-                            if thread_id == thread_id_deleted {
-                                buffer.remove(i);
-                            } else {
-                                i += 1;
-                            }
-                        }
-                    }
-
                     update_device_list_ui(ui_handle.clone(), driver_hashmap_mutex.clone());
                 }
             }
