@@ -54,7 +54,7 @@ fn main() {
 
 // connection processing
 fn run_connection(
-    mut server_dualchannel: DualChannel<(ThreadId, bool, Vec<u8>)>,
+    server_dualchannel: DualChannel<(ThreadId, bool, Vec<u8>)>,
     ui_handle: Weak<MainWindow>,
     driver_hashmap_mutex: Arc<Mutex<HashMap<ThreadId, Driver>>>,
 ) {
@@ -91,7 +91,7 @@ fn run_connection(
                         }
                     }
                 } else {
-                    // clearing old thread data
+                    // clearing driver data
                     driver_hashmap.remove(&thread_id);
 
                     update_device_list_ui(ui_handle.clone(), driver_hashmap_mutex.clone());
