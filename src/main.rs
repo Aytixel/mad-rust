@@ -70,7 +70,7 @@ fn main() {
                                     if let Some(driver) = driver_hashmap.get_mut(&thread_id) {
                                         driver.device_list = device_list;
 
-                                        update_device_list(
+                                        update_device_list_ui(
                                             ui_handle.clone(),
                                             driver_hashmap_mutex.clone(),
                                         );
@@ -99,7 +99,7 @@ fn main() {
 
                         server_dualchannel.unlock_tx();
 
-                        update_device_list(ui_handle.clone(), driver_hashmap_mutex.clone());
+                        update_device_list_ui(ui_handle.clone(), driver_hashmap_mutex.clone());
                     }
                 }
 
@@ -111,7 +111,7 @@ fn main() {
     }
 }
 
-fn update_device_list(
+fn update_device_list_ui(
     ui_handle: Weak<MainWindow>,
     driver_hashmap_mutex: Arc<Mutex<HashMap<ThreadId, Driver>>>,
 ) {
