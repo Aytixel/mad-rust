@@ -1,9 +1,29 @@
 use enigo::{Enigo, MouseButton, MouseControllable};
 
+#[derive(Debug)]
 struct ClickState {
     left: bool,
     right: bool,
     middle: bool,
+}
+
+#[derive(Debug)]
+struct ButtonState {
+    scroll_button: bool,
+    left_actionlock: bool,
+    right_actionlock: bool,
+    forwards_button: bool,
+    back_button: bool,
+    thumb_anticlockwise: bool,
+    thumb_clockwise: bool,
+    hat_top: bool,
+    hat_left: bool,
+    hat_right: bool,
+    hat_bottom: bool,
+    button_1: bool,
+    precision_aim: bool,
+    button_2: bool,
+    button_3: bool,
 }
 
 pub struct Mapper {
@@ -11,6 +31,7 @@ pub struct Mapper {
     pub mode: Option<u8>,
     pub shift_mode: Option<u8>,
     click_state: ClickState,
+    button_state: ButtonState,
 }
 
 impl Mapper {
@@ -24,6 +45,23 @@ impl Mapper {
                 right: false,
                 middle: false,
             },
+            button_state: ButtonState {
+                back_button: false,
+                forwards_button: false,
+                button_1: false,
+                button_2: false,
+                button_3: false,
+                hat_top: false,
+                hat_bottom: false,
+                hat_left: false,
+                hat_right: false,
+                precision_aim: false,
+                thumb_clockwise: false,
+                thumb_anticlockwise: false,
+                scroll_button: false,
+                left_actionlock: false,
+                right_actionlock: false,
+            },
         }
     }
 
@@ -34,12 +72,14 @@ impl Mapper {
     }
 
     fn update_mode(&mut self, buffer: &[u8]) {
-        self.mode = match buffer[2] {
-            0 | 1 | 2 => Some(buffer[2]),
+        let modes = buffer[2] & 0b111;
+
+        self.mode = match modes {
+            0 | 1 | 2 => Some(modes),
             _ => None,
         };
-        self.shift_mode = match buffer[2] {
-            4 | 5 | 6 => Some(buffer[2] - 0b100),
+        self.shift_mode = match modes {
+            4 | 5 | 6 => Some(modes - 0b100),
             _ => None,
         };
     }
@@ -61,15 +101,6 @@ impl Mapper {
                 self.enigo.mouse_up(MouseButton::Left);
             }
         }
-        if click_state.right != self.click_state.right {
-            self.click_state.right = click_state.right;
-
-            if click_state.right {
-                self.enigo.mouse_down(MouseButton::Right);
-            } else {
-                self.enigo.mouse_up(MouseButton::Right);
-            }
-        }
         if click_state.middle != self.click_state.middle {
             self.click_state.middle = click_state.middle;
 
@@ -77,6 +108,15 @@ impl Mapper {
                 self.enigo.mouse_down(MouseButton::Middle);
             } else {
                 self.enigo.mouse_up(MouseButton::Middle);
+            }
+        }
+        if click_state.right != self.click_state.right {
+            self.click_state.right = click_state.right;
+
+            if click_state.right {
+                self.enigo.mouse_down(MouseButton::Right);
+            } else {
+                self.enigo.mouse_up(MouseButton::Right);
             }
         }
 
@@ -103,5 +143,23 @@ impl Mapper {
         }
     }
 
-    fn mapped_emulation(&mut self, buffer: &[u8]) {}
+    fn mapped_emulation(&mut self, buffer: &[u8]) {
+        let mut button_state = ButtonState {
+            back_button: (buffer[0] & 8) > 0,
+            forwards_button: (buffer[0] & 16) > 0,
+            button_1: (buffer[0] & 32) > 0,
+            button_2: (buffer[0] & 64) > 0,
+            button_3: (buffer[0] & 128) > 0,
+            hat_top: (buffer[1] & 1) > 0,
+            hat_bottom: (buffer[1] & 2) > 0,
+            hat_left: (buffer[1] & 4) > 0,
+            hat_right: (buffer[1] & 8) > 0,
+            precision_aim: (buffer[1] & 16) > 0,
+            thumb_clockwise: (buffer[1] & 32) > 0,
+            thumb_anticlockwise: (buffer[1] & 64) > 0,
+            scroll_button: (buffer[2] & 8) > 0,
+            left_actionlock: (buffer[2] & 16) > 0,
+            right_actionlock: (buffer[2] & 32) > 0,
+        };
+    }
 }
