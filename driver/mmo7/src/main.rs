@@ -155,6 +155,7 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
 
         let mut buffer = [0; 8];
         let mut mapper = Mapper::new();
+        let mut timer = Timer::new(Duration::from_micros(500));
 
         loop {
             match device_handle.read_interrupt(
@@ -175,6 +176,8 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
                     break;
                 }
             }
+
+            timer.wait();
         }
 
         if has_kernel_driver {
