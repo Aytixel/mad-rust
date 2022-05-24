@@ -52,10 +52,10 @@ fn main() {
 
             loop {
                 if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
+                    let mut driver_hashmap = driver_hashmap_mutex.lock().unwrap();
+
                     if is_running {
                         if data.len() > 0 {
-                            let mut driver_hashmap = driver_hashmap_mutex.lock().unwrap();
-
                             match Commands::from(data) {
                                 Commands::DeviceConfigurationDescriptor(
                                     device_configuration_descriptor,
@@ -81,7 +81,7 @@ fn main() {
                         }
                     } else {
                         // clearing old thread data
-                        driver_hashmap_mutex.lock().unwrap().remove(&thread_id);
+                        driver_hashmap.remove(&thread_id);
 
                         if let Some(mut buffer) = server_dualchannel.lock_tx() {
                             let mut i = 0;
