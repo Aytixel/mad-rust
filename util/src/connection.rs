@@ -103,6 +103,22 @@ pub mod server {
 
                                         timer.wait();
                                     }
+
+                                    // clearing old data
+                                    {
+                                        let mut buffer = child.lock_rx();
+                                        let mut i = 0;
+
+                                        while i < buffer.len() {
+                                            let (thread_id_, _, _) = buffer[i].clone();
+
+                                            if thread_id_ == thread_id {
+                                                buffer.remove(i);
+                                            } else {
+                                                i += 1;
+                                            }
+                                        }
+                                    }
                                 });
                             }
                         }
@@ -134,7 +150,7 @@ pub mod client {
 
     impl Client {
         pub fn new() -> Self {
-            let (host, child) = DualChannel::<(bool, Vec<u8>)>::new();
+            let (host, mut child) = DualChannel::<(bool, Vec<u8>)>::new();
 
             spawn(move || {
                 let mut timer = Timer::new(TIMEOUT_1S);
@@ -147,6 +163,13 @@ pub mod client {
                             let mut size_buffer = [0; 8];
                             let mut last_packet_send = Instant::now();
                             let mut last_packet_receive = Instant::now();
+
+                            // clearing old data
+                            {
+                                let mut buffer = child.lock_rx();
+
+                                buffer.clear();
+                            }
 
                             child.send((true, vec![]));
 
