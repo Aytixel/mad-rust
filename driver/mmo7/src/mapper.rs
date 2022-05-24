@@ -1,10 +1,16 @@
 use enigo::{Enigo, MouseButton, MouseControllable};
 
+struct ClickState {
+    left: bool,
+    right: bool,
+    middle: bool,
+}
+
 pub struct Mapper {
     enigo: Enigo,
     pub mode: Option<u8>,
     pub shift_mode: Option<u8>,
-    button_state: [bool; 3],
+    click_state: ClickState,
 }
 
 impl Mapper {
@@ -13,7 +19,11 @@ impl Mapper {
             enigo: Enigo::new(),
             mode: Some(0),
             shift_mode: None,
-            button_state: [false, false, false],
+            click_state: ClickState {
+                left: false,
+                right: false,
+                middle: false,
+            },
         }
     }
 
@@ -36,34 +46,34 @@ impl Mapper {
 
     fn basic_emulation(&mut self, buffer: &[u8]) {
         // button emulation
-        let button_state = [
-            (buffer[0] & 1) > 0,
-            (buffer[0] & 2) > 0,
-            (buffer[0] & 4) > 0,
-        ];
+        let click_state = ClickState {
+            left: (buffer[0] & 1) > 0,
+            right: (buffer[0] & 2) > 0,
+            middle: (buffer[0] & 4) > 0,
+        };
 
-        if button_state[0] != self.button_state[0] {
-            self.button_state[0] = button_state[0];
+        if click_state.left != self.click_state.left {
+            self.click_state.left = click_state.left;
 
-            if button_state[0] {
+            if click_state.left {
                 self.enigo.mouse_down(MouseButton::Left);
             } else {
                 self.enigo.mouse_up(MouseButton::Left);
             }
         }
-        if button_state[1] != self.button_state[1] {
-            self.button_state[1] = button_state[1];
+        if click_state.right != self.click_state.right {
+            self.click_state.right = click_state.right;
 
-            if button_state[1] {
+            if click_state.right {
                 self.enigo.mouse_down(MouseButton::Right);
             } else {
                 self.enigo.mouse_up(MouseButton::Right);
             }
         }
-        if button_state[2] != self.button_state[2] {
-            self.button_state[2] = button_state[2];
+        if click_state.middle != self.click_state.middle {
+            self.click_state.middle = click_state.middle;
 
-            if button_state[2] {
+            if click_state.middle {
                 self.enigo.mouse_down(MouseButton::Middle);
             } else {
                 self.enigo.mouse_up(MouseButton::Middle);
