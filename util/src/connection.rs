@@ -72,7 +72,8 @@ pub mod server {
                                         }
 
                                         // data to the client
-                                        if let Some(mut buffer) = child.lock_rx() {
+                                        {
+                                            let mut buffer = child.lock_rx();
                                             let mut i = 0;
 
                                             while i < buffer.len() {
@@ -80,6 +81,7 @@ pub mod server {
                                                     buffer[i].clone();
 
                                                 if thread_id == current().id() {
+                                                    // connection end
                                                     if !is_running {
                                                         socket.write_all(&0u64.to_be_bytes()).ok();
                                                         break 'main;
@@ -98,7 +100,6 @@ pub mod server {
                                             }
                                         }
 
-                                        child.unlock_rx();
                                         timer.wait();
                                     }
                                 });
@@ -187,6 +188,7 @@ pub mod client {
                                 // data to the server
                                 loop {
                                     if let Some((is_running, data)) = child.recv() {
+                                        // connection end
                                         if !is_running {
                                             socket.write_all(&0u64.to_be_bytes()).ok();
                                             break 'main;

@@ -94,7 +94,8 @@ fn run_connection(
                     // clearing old thread data
                     driver_hashmap.remove(&thread_id);
 
-                    if let Some(mut buffer) = server_dualchannel.lock_tx() {
+                    {
+                        let mut buffer = server_dualchannel.lock_tx();
                         let mut i = 0;
 
                         while i < buffer.len() {
@@ -107,8 +108,6 @@ fn run_connection(
                             }
                         }
                     }
-
-                    server_dualchannel.unlock_tx();
 
                     update_device_list_ui(ui_handle.clone(), driver_hashmap_mutex.clone());
                 }
