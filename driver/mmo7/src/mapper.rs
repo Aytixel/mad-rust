@@ -18,8 +18,20 @@ impl Mapper {
     }
 
     pub fn emulate(&mut self, buffer: &[u8]) {
+        self.update_mode(buffer);
         self.basic_emulation(buffer);
         self.mapped_emulation(buffer);
+    }
+
+    fn update_mode(&mut self, buffer: &[u8]) {
+        self.mode = match buffer[2] {
+            0 | 1 | 2 => Some(buffer[2]),
+            _ => None,
+        };
+        self.shift_mode = match buffer[2] {
+            4 | 5 | 6 => Some(buffer[2] - 0b100),
+            _ => None,
+        };
     }
 
     fn basic_emulation(&mut self, buffer: &[u8]) {
