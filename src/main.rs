@@ -63,7 +63,10 @@ fn run_connection(
 
         loop {
             if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
-                let mut driver_hashmap = driver_hashmap_mutex.lock().unwrap();
+                let mut driver_hashmap = match driver_hashmap_mutex.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
 
                 if is_running {
                     if data.len() > 0 {
@@ -111,7 +114,12 @@ fn update_device_list_ui(
     invoke_from_event_loop(move || {
         let mut device_list: Vec<DeviceData> = vec![];
 
-        for driver in driver_hashmap_mutex.lock().unwrap().values() {
+        for driver in match driver_hashmap_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+        .values()
+        {
             if let Ok(icon) = Image::load_from_path(Path::new(
                 &driver.device_configuration_descriptor.device_icon_path,
             )) {
