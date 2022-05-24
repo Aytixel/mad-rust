@@ -1,13 +1,11 @@
 use enigo::{Enigo, MouseButton, MouseControllable};
 
-#[derive(Debug)]
 struct ClickState {
     left: bool,
     right: bool,
     middle: bool,
 }
 
-#[derive(Debug)]
 struct ButtonState {
     scroll_button: bool,
     left_actionlock: bool,
