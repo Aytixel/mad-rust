@@ -1,9 +1,8 @@
 mod mapper;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env::current_exe;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
@@ -34,30 +33,23 @@ fn main() {
     if !kill_double() {
         let client = Client::new();
         let client_dualchannel = client.dual_channel;
-        let context = Context::new().unwrap();
-        let device_list_mutex = Arc::new(Mutex::new(HashMap::<String, Arc<AtomicBool>>::new()));
+        let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
         let (host, child) = DualChannel::<Message>::new();
 
         run_connection(client_dualchannel, child, device_list_mutex.clone());
-        listening_new_device(context, host, device_list_mutex);
+        listening_new_device(host, device_list_mutex);
     }
 }
 
 // device handling
 fn listening_new_device(
-    context: Context,
     host: DualChannel<Message>,
-    device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    device_list_mutex: Arc<Mutex<HashSet<String>>>,
 ) {
     let mut timer = Timer::new(TIMEOUT_1S);
 
     loop {
-        let mut device_list = match device_list_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-
-        for device in context.devices().unwrap().iter() {
+        for device in Context::new().unwrap().devices().unwrap().iter() {
             let device_descriptor = device.device_descriptor().unwrap();
 
             if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
@@ -70,16 +62,25 @@ fn listening_new_device(
                         )
                         .ok()
                     {
+                        let mut device_list = match device_list_mutex.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+
                         if let None = device_list.get(&serial_number) {
                             let host = host.clone();
-                            let is_running = Arc::new(AtomicBool::new(true));
+                            let device_list_mutex = device_list_mutex.clone();
 
-                            device_list.insert(serial_number.clone(), is_running.clone());
+                            device_list.insert(serial_number.clone());
 
                             spawn(move || {
-                                run_device(serial_number, host.clone());
+                                run_device(serial_number.clone(), host.clone());
 
-                                (*is_running).store(false, Ordering::Relaxed);
+                                match device_list_mutex.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => poisoned.into_inner(),
+                                }
+                                .remove(&serial_number);
 
                                 host.send(Message::DeviceListUpdate);
                             });
@@ -159,7 +160,7 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
             match device_handle.read_interrupt(
                 endpoint.address,
                 &mut buffer,
-                Duration::from_millis(1),
+                Duration::from_millis(100),
             ) {
                 Ok(_) => {
                     //println!("{} : {:?}", serial_number, buffer);
@@ -186,7 +187,7 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
 fn run_connection(
     client_dualchannel: DualChannel<(bool, Vec<u8>)>,
     child: DualChannel<Message>,
-    device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    device_list_mutex: Arc<Mutex<HashSet<String>>>,
 ) {
     spawn(move || {
         let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
@@ -222,16 +223,6 @@ fn run_connection(
             ],
         );
         let mut timer = Timer::new(Duration::from_millis(100));
-        let mut device_list = match device_list_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-
-        for (serial_number, is_running) in device_list.clone().iter() {
-            if !(*is_running).load(Ordering::Relaxed) {
-                device_list.remove(serial_number);
-            }
-        }
 
         loop {
             if let Some((is_running, data)) = client_dualchannel.recv() {
@@ -239,7 +230,7 @@ fn run_connection(
                     if data.len() == 0 {
                         client_dualchannel.send((true, device_configuration_descriptor.to_bytes()));
 
-                        update_device_list(&client_dualchannel, &device_list);
+                        update_device_list(&client_dualchannel, device_list_mutex.clone());
                     } else {
                         println!("{:?}", data);
                     }
@@ -249,7 +240,7 @@ fn run_connection(
             if let Some(message) = child.recv() {
                 match message {
                     Message::DeviceListUpdate => {
-                        update_device_list(&client_dualchannel, &device_list)
+                        update_device_list(&client_dualchannel, device_list_mutex.clone())
                     }
                 }
             }
@@ -261,14 +252,17 @@ fn run_connection(
 
 fn update_device_list(
     client_dualchannel: &DualChannel<(bool, Vec<u8>)>,
-    device_list: &HashMap<String, Arc<AtomicBool>>,
+    device_list_mutex: Arc<Mutex<HashSet<String>>>,
 ) {
     let mut serial_number_vec = vec![];
 
-    for (serial_number, is_running) in device_list.iter() {
-        if (*is_running).load(Ordering::Relaxed) {
-            serial_number_vec.push(serial_number.clone());
-        }
+    for serial_number in match device_list_mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+    .iter()
+    {
+        serial_number_vec.push(serial_number.clone());
     }
 
     client_dualchannel.send((true, DeviceList::new(serial_number_vec).to_bytes()));
