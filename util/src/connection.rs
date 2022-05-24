@@ -32,13 +32,14 @@ pub mod server {
                                     let mut size_buffer = [0; 8];
                                     let mut last_packet_send = Instant::now();
                                     let mut last_packet_receive = Instant::now();
+                                    let thread_id = current().id();
 
-                                    child.send((current().id(), true, vec![]));
+                                    child.send((thread_id, true, vec![]));
 
                                     'main: loop {
                                         // timeout packet
                                         if last_packet_receive.elapsed() > Duration::from_secs(5) {
-                                            child.send((current().id(), false, vec![]));
+                                            child.send((thread_id, false, vec![]));
                                             break;
                                         }
 
@@ -55,7 +56,7 @@ pub mod server {
 
                                             // connection end
                                             if size == 0 {
-                                                child.send((current().id(), false, vec![]));
+                                                child.send((thread_id, false, vec![]));
                                                 break;
                                             }
 
@@ -66,7 +67,7 @@ pub mod server {
                                                 let mut buffer = vec![0; size as usize];
 
                                                 if let Ok(_) = socket.read_exact(&mut buffer) {
-                                                    child.send((current().id(), true, buffer));
+                                                    child.send((thread_id, true, buffer));
                                                 }
                                             }
                                         }
@@ -77,10 +78,10 @@ pub mod server {
                                             let mut i = 0;
 
                                             while i < buffer.len() {
-                                                let (thread_id, is_running, data) =
+                                                let (thread_id_, is_running, data) =
                                                     buffer[i].clone();
 
-                                                if thread_id == current().id() {
+                                                if thread_id_ == thread_id {
                                                     // connection end
                                                     if !is_running {
                                                         socket.write_all(&0u64.to_be_bytes()).ok();
