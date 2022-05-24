@@ -32,136 +32,64 @@ enum Message {
 
 fn main() {
     if !kill_double() {
-        let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
-            VID,
-            PID,
-            "MMO7".to_string(),
-            current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join(Path::new("icon.png"))
-                .to_str()
-                .unwrap()
-                .to_string(),
-            3,
-            3,
-            vec![
-                "Scroll Button".to_string(),
-                "Left ActionLock".to_string(),
-                "Right ActionLock".to_string(),
-                "Forwards Button".to_string(),
-                "Back Button".to_string(),
-                "Thumb Anticlockwise".to_string(),
-                "Thumb Clockwise".to_string(),
-                "Hat Top".to_string(),
-                "Hat Left".to_string(),
-                "Hat Right".to_string(),
-                "Hat Bottom".to_string(),
-                "Button 1".to_string(),
-                "Button 2".to_string(),
-                "Precision Aim".to_string(),
-                "Button 3".to_string(),
-            ],
-        );
         let client = Client::new();
         let client_dualchannel = client.dual_channel;
         let context = Context::new().unwrap();
-        let device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let device_list_mutex_clone = device_list_mutex.clone();
+        let device_list_mutex = Arc::new(Mutex::new(HashMap::<String, Arc<AtomicBool>>::new()));
         let (host, child) = DualChannel::<Message>::new();
-        let mut timer = Timer::new(TIMEOUT_1S);
 
-        spawn(move || {
-            let mut timer = Timer::new(Duration::from_millis(100));
-            let mut device_list_clone = match device_list_mutex_clone.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+        run_connection(client_dualchannel, child, device_list_mutex.clone());
+        listening_new_device(context, host, device_list_mutex);
+    }
+}
 
-            for (serial_number, is_running) in device_list_clone.clone().iter() {
-                if !(*is_running).load(Ordering::Relaxed) {
-                    device_list_clone.remove(serial_number);
-                }
-            }
+// device handling
+fn listening_new_device(
+    context: Context,
+    host: DualChannel<Message>,
+    device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+) {
+    let mut timer = Timer::new(TIMEOUT_1S);
 
-            let update_device_list = || {
-                let mut serial_number_vec = vec![];
+    loop {
+        let mut device_list = match device_list_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
-                for (serial_number, is_running) in device_list_clone.iter() {
-                    if (*is_running).load(Ordering::Relaxed) {
-                        serial_number_vec.push(serial_number.clone());
-                    }
-                }
+        for device in context.devices().unwrap().iter() {
+            let device_descriptor = device.device_descriptor().unwrap();
 
-                client_dualchannel.send((true, DeviceList::new(serial_number_vec).to_bytes()));
-            };
+            if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
+                if let Ok(device_handle) = device.open() {
+                    if let Some(serial_number) = device_handle
+                        .read_serial_number_string(
+                            device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
+                            &device_descriptor,
+                            TIMEOUT_1S,
+                        )
+                        .ok()
+                    {
+                        if let None = device_list.get(&serial_number) {
+                            let host = host.clone();
+                            let is_running = Arc::new(AtomicBool::new(true));
 
-            loop {
-                if let Some((is_running, data)) = client_dualchannel.recv() {
-                    if is_running {
-                        if data.len() == 0 {
-                            client_dualchannel
-                                .send((true, device_configuration_descriptor.to_bytes()));
+                            device_list.insert(serial_number.clone(), is_running.clone());
 
-                            update_device_list();
-                        } else {
-                            println!("{:?}", data);
-                        }
-                    }
-                }
+                            spawn(move || {
+                                run_device(serial_number, host.clone());
 
-                if let Some(message) = child.recv() {
-                    match message {
-                        Message::DeviceListUpdate => update_device_list(),
-                    }
-                }
+                                (*is_running).store(false, Ordering::Relaxed);
 
-                timer.wait();
-            }
-        });
-
-        loop {
-            let mut device_list = match device_list_mutex.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-
-            for device in context.devices().unwrap().iter() {
-                let device_descriptor = device.device_descriptor().unwrap();
-
-                if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
-                    if let Ok(device_handle) = device.open() {
-                        if let Some(serial_number) = device_handle
-                            .read_serial_number_string(
-                                device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
-                                &device_descriptor,
-                                TIMEOUT_1S,
-                            )
-                            .ok()
-                        {
-                            if let None = device_list.get(&serial_number) {
-                                let host = host.clone();
-                                let is_running = Arc::new(AtomicBool::new(true));
-
-                                device_list.insert(serial_number.clone(), is_running.clone());
-
-                                spawn(move || {
-                                    run_device(serial_number, host.clone());
-
-                                    (*is_running).store(false, Ordering::Relaxed);
-
-                                    host.send(Message::DeviceListUpdate);
-                                });
-                            }
+                                host.send(Message::DeviceListUpdate);
+                            });
                         }
                     }
                 }
             }
-
-            timer.wait();
         }
+
+        timer.wait();
     }
 }
 
@@ -252,4 +180,96 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
             device_handle.attach_kernel_driver(endpoint.iface).ok();
         }
     }
+}
+
+// connection processing
+fn run_connection(
+    client_dualchannel: DualChannel<(bool, Vec<u8>)>,
+    child: DualChannel<Message>,
+    device_list_mutex: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+) {
+    spawn(move || {
+        let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
+            VID,
+            PID,
+            "MMO7".to_string(),
+            current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(Path::new("icon.png"))
+                .to_str()
+                .unwrap()
+                .to_string(),
+            3,
+            3,
+            vec![
+                "Scroll Button".to_string(),
+                "Left ActionLock".to_string(),
+                "Right ActionLock".to_string(),
+                "Forwards Button".to_string(),
+                "Back Button".to_string(),
+                "Thumb Anticlockwise".to_string(),
+                "Thumb Clockwise".to_string(),
+                "Hat Top".to_string(),
+                "Hat Left".to_string(),
+                "Hat Right".to_string(),
+                "Hat Bottom".to_string(),
+                "Button 1".to_string(),
+                "Button 2".to_string(),
+                "Precision Aim".to_string(),
+                "Button 3".to_string(),
+            ],
+        );
+        let mut timer = Timer::new(Duration::from_millis(100));
+        let mut device_list = match device_list_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
+        for (serial_number, is_running) in device_list.clone().iter() {
+            if !(*is_running).load(Ordering::Relaxed) {
+                device_list.remove(serial_number);
+            }
+        }
+
+        loop {
+            if let Some((is_running, data)) = client_dualchannel.recv() {
+                if is_running {
+                    if data.len() == 0 {
+                        client_dualchannel.send((true, device_configuration_descriptor.to_bytes()));
+
+                        update_device_list(&client_dualchannel, &device_list);
+                    } else {
+                        println!("{:?}", data);
+                    }
+                }
+            }
+
+            if let Some(message) = child.recv() {
+                match message {
+                    Message::DeviceListUpdate => {
+                        update_device_list(&client_dualchannel, &device_list)
+                    }
+                }
+            }
+
+            timer.wait();
+        }
+    });
+}
+
+fn update_device_list(
+    client_dualchannel: &DualChannel<(bool, Vec<u8>)>,
+    device_list: &HashMap<String, Arc<AtomicBool>>,
+) {
+    let mut serial_number_vec = vec![];
+
+    for (serial_number, is_running) in device_list.iter() {
+        if (*is_running).load(Ordering::Relaxed) {
+            serial_number_vec.push(serial_number.clone());
+        }
+    }
+
+    client_dualchannel.send((true, DeviceList::new(serial_number_vec).to_bytes()));
 }
