@@ -155,7 +155,6 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
 
         let mut buffer = [0; 8];
         let mut mapper = Mapper::new();
-        let mut timer = Timer::new(Duration::from_micros(500));
 
         loop {
             match device_handle.read_interrupt(
@@ -167,17 +166,12 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
                     //println!("{} : {:?}", serial_number, buffer);
                     mapper.emulate(&buffer);
                 }
-                Err(rusb::Error::Timeout)
-                | Err(rusb::Error::Pipe)
-                | Err(rusb::Error::Overflow)
-                | Err(rusb::Error::Io) => {}
+                Err(rusb::Error::Timeout) => {}
                 Err(err) => {
                     println!("{} disconnected : {}", serial_number, err);
                     break;
                 }
             }
-
-            timer.wait();
         }
 
         if has_kernel_driver {
