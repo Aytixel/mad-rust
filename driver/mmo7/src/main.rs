@@ -225,7 +225,6 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
         dual_channel.send(Message::DeviceListUpdate);
 
         let mut buffer = [0; 8];
-        let mut timer = Timer::new(Duration::from_micros(100));
         let mut mapper = Mapper::new();
 
         loop {
@@ -247,8 +246,6 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
                     break;
                 }
             }
-
-            timer.wait();
         }
 
         if has_kernel_driver {
