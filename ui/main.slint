@@ -21,6 +21,9 @@ export MainWindow := Window {
     background: #212121;
     min-height: 300px;
     min-width: 500px;
+    no-frame: true;
+    preferred-height: 720px;
+    preferred-width: 1280px;
 
     if app_state == 0: Rectangle {
         DeviceSelectionWindow {
