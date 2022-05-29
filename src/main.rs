@@ -6,6 +6,10 @@ use util::time::Timer;
 use webrender::api::units::*;
 use webrender::api::*;
 use webrender::DebugFlags;
+#[cfg(target_os = "windows")]
+use window_vibrancy::apply_blur;
+#[cfg(target_os = "macos")]
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use winit::platform::run_return::EventLoopExtRunReturn;
 
 fn main() {
@@ -14,9 +18,22 @@ fn main() {
 
     let mut window = window::Window::new(
         window_options,
-        Some(ColorF::from(ColorU::new(33, 33, 33, 250))),
+        Some(ColorF::from(ColorU::new(33, 33, 33, 240))),
         0,
     );
+
+    {
+        // add background blur effect on windows and macos
+        let context = unsafe { window.context.take().unwrap().make_current().unwrap() };
+
+        #[cfg(target_os = "windows")]
+        apply_blur(&context.window(), None).ok();
+
+        #[cfg(target_os = "macos")]
+        apply_vibrancy(&context.window(), NSVisualEffectMaterial::AppearanceBased).ok();
+
+        window.context = Some(unsafe { context.make_not_current().unwrap() });
+    }
 
     window.load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
 

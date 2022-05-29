@@ -302,7 +302,7 @@ impl Font {
         tab_size_option: Option<f32>,
         position: LayoutPoint,
     ) -> LayoutRect {
-        let mut char_iterator: Vec<char> = text.chars().collect();
+        let char_iterator: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
             tab_size
         } else {
