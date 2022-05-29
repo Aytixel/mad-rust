@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
+use std::rc::Rc;
 
 use gleam::gl;
 use glutin::{NotCurrent, PossiblyCurrent};
@@ -85,7 +86,8 @@ pub struct Window {
     pub document_id: DocumentId,
     epoch: Epoch,
     pub api: RenderApi,
-    pub font_key_hashmap: HashMap<&'static str, FontKey>,
+    pub font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
+    pub font_instance_key_hashmap: HashMap<Rc<FontInstanceKey>, Rc<FontKey>>,
 }
 
 impl Window {
@@ -167,6 +169,7 @@ impl Window {
             document_id,
             api,
             font_key_hashmap: HashMap::new(),
+            font_instance_key_hashmap: HashMap::new(),
         }
     }
 
@@ -176,17 +179,21 @@ impl Window {
         let font_key = self.api.generate_font_key();
         txn.add_raw_font(font_key, load_file(pathname), 0);
 
-        self.font_key_hashmap.insert(name, font_key);
+        self.font_key_hashmap.insert(name, Rc::new(font_key));
         self.api.send_transaction(self.document_id, txn);
     }
 
-    pub fn load_font(&mut self, name: &'static str, font_size: Au) -> FontInstanceKey {
+    pub fn load_font(&mut self, name: &'static str, font_size: Au) -> Font {
         let mut txn = Transaction::new();
 
-        let font_instance_key = self.api.generate_font_instance_key();
+        let font = Font::new(
+            self.api.generate_font_instance_key(),
+            self.font_key_hashmap[&name].clone(),
+            font_size,
+        );
         txn.add_font_instance(
-            font_instance_key,
-            self.font_key_hashmap[&name],
+            font.instance_key,
+            *font.key,
             font_size,
             None,
             None,
@@ -195,13 +202,13 @@ impl Window {
 
         self.api.send_transaction(self.document_id, txn);
 
-        font_instance_key
+        font
     }
 
-    pub fn unload_font(&mut self, font_instance_key: FontInstanceKey) {
+    pub fn unload_font(&mut self, font: Font) {
         let mut txn = Transaction::new();
 
-        txn.delete_font_instance(font_instance_key);
+        txn.delete_font_instance(font.instance_key);
 
         self.api.send_transaction(self.document_id, txn);
     }
@@ -268,6 +275,112 @@ impl Window {
 
     pub fn deinit(self) {
         self.renderer.deinit();
+    }
+}
+
+pub struct Font {
+    pub instance_key: FontInstanceKey,
+    pub key: Rc<FontKey>,
+    pub size: Au,
+}
+
+impl Font {
+    pub fn new(font_instance_key: FontInstanceKey, font_key: Rc<FontKey>, font_size: Au) -> Self {
+        Self {
+            instance_key: font_instance_key,
+            key: font_key,
+            size: font_size,
+        }
+    }
+
+    pub fn push_text(
+        &self,
+        frame_builder: &mut FrameBuilder,
+        api: &RenderApi,
+        text: &'static str,
+        color: ColorF,
+        tab_size_option: Option<f32>,
+        position: LayoutPoint,
+    ) -> LayoutRect {
+        let tab_size = if let Some(tab_size) = tab_size_option {
+            tab_size
+        } else {
+            4.0
+        };
+        let glyph_indices: Vec<u32> = api
+            .get_glyph_indices(*self.key, text)
+            .into_iter()
+            .flatten()
+            .collect();
+        let glyph_dimension_options =
+            api.get_glyph_dimensions(self.instance_key, glyph_indices.clone());
+        let mut glyph_instances = vec![];
+        let mut glyph_position = position.clone();
+        let mut glyph_size = LayoutSize::new(0.0, self.size.to_f32_px());
+        let mut line_count = 1.0;
+        let mut char_width_mean = 0.0;
+        let mut char_width_count = 0;
+
+        for glyph_dimension_option in glyph_dimension_options.clone() {
+            if let Some(glyph_dimension) = glyph_dimension_option {
+                char_width_mean += glyph_dimension.width as f32;
+                char_width_count += 1;
+            }
+        }
+
+        char_width_mean /= char_width_count as f32;
+
+        for (index, glyph_indice) in glyph_indices.into_iter().enumerate() {
+            if let Some(glyph_dimension) = glyph_dimension_options[index] {
+                glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
+                glyph_instances.push(GlyphInstance {
+                    index: glyph_indice,
+                    point: glyph_position,
+                });
+                glyph_position +=
+                    LayoutSize::new(glyph_dimension.advance, -(self.size.to_f32_px()));
+                glyph_size += LayoutSize::new(glyph_dimension.advance, 0.0);
+            } else {
+                match text.get(index..index + 1) {
+                    Some(" ") => {
+                        glyph_position += LayoutSize::new(char_width_mean, 0.0);
+                        glyph_size += LayoutSize::new(char_width_mean, 0.0);
+                    }
+                    Some("\t") => {
+                        glyph_position += LayoutSize::new(char_width_mean * tab_size, 0.0);
+                        glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0);
+                    }
+                    Some("\n") => {
+                        glyph_position = position.clone();
+                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
+                        glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
+                        line_count += 1.0;
+                    }
+                    Some("\r") => {
+                        glyph_position = position.clone();
+                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
+                        glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
+                        line_count += 1.0;
+                    }
+                    Some(&_) | None => {}
+                }
+            }
+        }
+
+        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
+
+        let text_bounds = LayoutRect::new(position, glyph_size.to_vector().to_size());
+
+        frame_builder.builder.push_text(
+            &CommonItemProperties::new(text_bounds, frame_builder.space_and_clip),
+            text_bounds,
+            &glyph_instances,
+            self.instance_key,
+            color,
+            None,
+        );
+
+        text_bounds
     }
 }
 

@@ -27,7 +27,7 @@ fn main() {
 
 fn run_ui(window: &mut window::Window) {
     let mut timer = Timer::new(Duration::from_micros(3333));
-    let font = window.load_font("OpenSans", units::Au::from_f64_px(32.0));
+    let font = window.load_font("OpenSans", units::Au::from_f32_px(32.0));
 
     loop {
         let mut do_exit = false;
@@ -91,70 +91,16 @@ fn run_ui(window: &mut window::Window) {
             ColorF::new(0.0, 1.0, 0.0, 1.0),
         );
 
-        let text_bounds =
-            LayoutRect::new(LayoutPoint::new(100.0, 50.0), LayoutSize::new(700.0, 200.0));
-        let glyphs = vec![
-            GlyphInstance {
-                index: 48,
-                point: LayoutPoint::new(100.0, 100.0),
-            },
-            GlyphInstance {
-                index: 68,
-                point: LayoutPoint::new(150.0, 100.0),
-            },
-            GlyphInstance {
-                index: 80,
-                point: LayoutPoint::new(200.0, 100.0),
-            },
-            GlyphInstance {
-                index: 82,
-                point: LayoutPoint::new(250.0, 100.0),
-            },
-            GlyphInstance {
-                index: 81,
-                point: LayoutPoint::new(300.0, 100.0),
-            },
-            GlyphInstance {
-                index: 3,
-                point: LayoutPoint::new(350.0, 100.0),
-            },
-            GlyphInstance {
-                index: 86,
-                point: LayoutPoint::new(400.0, 100.0),
-            },
-            GlyphInstance {
-                index: 79,
-                point: LayoutPoint::new(450.0, 100.0),
-            },
-            GlyphInstance {
-                index: 72,
-                point: LayoutPoint::new(500.0, 100.0),
-            },
-            GlyphInstance {
-                index: 83,
-                point: LayoutPoint::new(550.0, 100.0),
-            },
-            GlyphInstance {
-                index: 87,
-                point: LayoutPoint::new(600.0, 100.0),
-            },
-            GlyphInstance {
-                index: 17,
-                point: LayoutPoint::new(650.0, 100.0),
-            },
-        ];
-
-        builder.push_text(
-            &CommonItemProperties::new(text_bounds, frame_builder.space_and_clip),
-            text_bounds,
-            &glyphs,
-            font,
+        font.push_text(
+            &mut frame_builder,
+            &window.api,
+            "Salut comment\n sa\r\tva",
             ColorF::new(1.0, 1.0, 0.0, 1.0),
             None,
+            LayoutPoint::new(100.0, 50.0),
         );
 
         frame_builder.builder.pop_stacking_context();
-
         window.render_frame(frame_builder);
         timer.wait();
     }
