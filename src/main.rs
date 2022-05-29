@@ -94,7 +94,7 @@ fn run_ui(window: &mut window::Window) {
         font.push_text(
             &mut frame_builder,
             &window.api,
-            "Salut comment\n sa\r\tva",
+            "Salut comment\n ça\r\tva",
             ColorF::new(1.0, 1.0, 0.0, 1.0),
             None,
             LayoutPoint::new(100.0, 50.0),

@@ -302,6 +302,7 @@ impl Font {
         tab_size_option: Option<f32>,
         position: LayoutPoint,
     ) -> LayoutRect {
+        let mut char_iterator: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
             tab_size
         } else {
@@ -341,28 +342,28 @@ impl Font {
                     LayoutSize::new(glyph_dimension.advance, -(self.size.to_f32_px()));
                 glyph_size += LayoutSize::new(glyph_dimension.advance, 0.0);
             } else {
-                match text.get(index..index + 1) {
-                    Some(" ") => {
+                match char_iterator[index] {
+                    ' ' => {
                         glyph_position += LayoutSize::new(char_width_mean, 0.0);
                         glyph_size += LayoutSize::new(char_width_mean, 0.0);
                     }
-                    Some("\t") => {
+                    '\t' => {
                         glyph_position += LayoutSize::new(char_width_mean * tab_size, 0.0);
                         glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0);
                     }
-                    Some("\n") => {
+                    '\n' => {
                         glyph_position = position.clone();
                         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
                         glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
                         line_count += 1.0;
                     }
-                    Some("\r") => {
+                    '\r' => {
                         glyph_position = position.clone();
                         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
                         glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
                         line_count += 1.0;
                     }
-                    Some(&_) | None => {}
+                    _ => {}
                 }
             }
         }
