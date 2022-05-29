@@ -1,20 +1,18 @@
 mod window;
 
-use std::time::Duration;
-
-use util::time::Timer;
 use webrender::api::units::*;
 use webrender::api::*;
-use webrender::DebugFlags;
 #[cfg(target_os = "windows")]
 use window_vibrancy::apply_blur;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::dpi::PhysicalSize;
 
 fn main() {
-    let mut window_options = window::WindowOptions::new("test", 800, 600, Some("./ui/icon.png"));
+    let mut window_options = window::WindowOptions::new("test", 1080, 720, Some("./ui/icon.png"));
     window_options.transparent = true;
+    window_options.decorations = false;
+    window_options.min_size = Some(PhysicalSize::new(533, 300));
 
     let mut window = window::Window::new(
         window_options,
@@ -24,71 +22,48 @@ fn main() {
 
     {
         // add background blur effect on windows and macos
-        let context = unsafe { window.context.take().unwrap().make_current().unwrap() };
-
         #[cfg(target_os = "windows")]
-        apply_blur(&context.window(), None).ok();
+        apply_blur(&window.context.window(), None).ok();
 
         #[cfg(target_os = "macos")]
-        apply_vibrancy(&context.window(), NSVisualEffectMaterial::AppearanceBased).ok();
-
-        window.context = Some(unsafe { context.make_not_current().unwrap() });
+        apply_vibrancy(
+            &window.context.window(),
+            NSVisualEffectMaterial::AppearanceBased,
+        )
+        .ok();
     }
 
     window.load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
 
-    run_ui(&mut window);
+    let app = App::new(window.load_font("OpenSans", units::Au::from_f32_px(32.0)));
 
+    window.set_window(app);
+    window.run();
     window.deinit();
 }
 
-fn run_ui(window: &mut window::Window) {
-    let mut timer = Timer::new(Duration::from_micros(3333));
-    let font = window.load_font("OpenSans", units::Au::from_f32_px(32.0));
+struct App {
+    font: window::Font,
+    has_rendered: bool,
+}
 
-    loop {
-        let mut do_exit = false;
+impl App {
+    fn new(font: window::Font) -> Box<Self> {
+        Box::new(Self {
+            font,
+            has_rendered: false,
+        })
+    }
+}
 
-        window
-            .events_loop
-            .run_return(|global_event, _elwt, control_flow| {
-                *control_flow = winit::event_loop::ControlFlow::Exit;
-                match global_event {
-                    winit::event::Event::WindowEvent { event, .. } => match event {
-                        winit::event::WindowEvent::CloseRequested
-                        | winit::event::WindowEvent::KeyboardInput {
-                            input:
-                                winit::event::KeyboardInput {
-                                    virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
-                                    ..
-                                },
-                            ..
-                        } => do_exit = true,
-                        winit::event::WindowEvent::KeyboardInput {
-                            input:
-                                winit::event::KeyboardInput {
-                                    state: winit::event::ElementState::Pressed,
-                                    virtual_keycode: Some(winit::event::VirtualKeyCode::P),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            println!("set flags {}", window.name);
-                            window
-                                .api
-                                .send_debug_cmd(DebugCommand::SetFlags(DebugFlags::PROFILER_DBG))
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            });
+impl window::WindowTrait for App {
+    fn on_event(&mut self, _: Vec<window::Event>, _: &mut window::Window) {}
 
-        if do_exit {
-            break;
-        }
+    fn should_rerender(&self) -> bool {
+        !self.has_rendered
+    }
 
-        let mut frame_builder = window.build_frame();
+    fn render(&mut self, frame_builder: &mut window::FrameBuilder, window: &mut window::Window) {
         let builder = &mut frame_builder.builder;
 
         builder.push_simple_stacking_context(
@@ -108,8 +83,8 @@ fn run_ui(window: &mut window::Window) {
             ColorF::new(0.0, 1.0, 0.0, 1.0),
         );
 
-        font.push_text(
-            &mut frame_builder,
+        self.font.push_text(
+            frame_builder,
             &window.api,
             "Salut comment\n ça\r\tva",
             ColorF::new(1.0, 1.0, 0.0, 1.0),
@@ -118,7 +93,7 @@ fn run_ui(window: &mut window::Window) {
         );
 
         frame_builder.builder.pop_stacking_context();
-        window.render_frame(frame_builder);
-        timer.wait();
+
+        self.has_rendered = true;
     }
 }

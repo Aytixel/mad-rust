@@ -2,12 +2,16 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gleam::gl;
-use glutin::{NotCurrent, PossiblyCurrent};
+use glutin::PossiblyCurrent;
+use util::time::Timer;
 use webrender::api::units::*;
 use webrender::api::*;
+use webrender::DebugFlags;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::platform::run_return::EventLoopExtRunReturn;
 
 struct Notifier {
     events_proxy: winit::event_loop::EventLoopProxy<()>,
@@ -78,8 +82,8 @@ impl WindowOptions {
 }
 
 pub struct Window {
-    pub events_loop: winit::event_loop::EventLoop<()>,
-    pub context: Option<glutin::WindowedContext<NotCurrent>>,
+    pub event_loop: winit::event_loop::EventLoop<()>,
+    pub context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
     pub renderer: webrender::Renderer,
     pub name: &'static str,
     pipeline_id: PipelineId,
@@ -88,6 +92,7 @@ pub struct Window {
     pub api: RenderApi,
     pub font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
     pub font_instance_key_hashmap: HashMap<Rc<FontInstanceKey>, Rc<FontKey>>,
+    window: Option<Box<dyn WindowTrait>>,
 }
 
 impl Window {
@@ -96,7 +101,7 @@ impl Window {
         clear_color: Option<ColorF>,
         document_layer: DocumentLayer,
     ) -> Self {
-        let events_loop = winit::event_loop::EventLoop::new();
+        let event_loop = winit::event_loop::EventLoop::new();
         let mut window_builder = winit::window::WindowBuilder::new()
             .with_title(window_options.name)
             .with_inner_size(window_options.size)
@@ -126,7 +131,7 @@ impl Window {
             .with_vsync(true)
             .with_double_buffer(Some(true))
             .with_multisampling(4)
-            .build_windowed(window_builder, &events_loop)
+            .build_windowed(window_builder, &event_loop)
             .unwrap();
 
         let context = unsafe { context.make_current().unwrap() };
@@ -150,7 +155,7 @@ impl Window {
             let size = context.window().inner_size();
             DeviceIntSize::new(size.width as i32, size.height as i32)
         };
-        let notifier = Box::new(Notifier::new(events_loop.create_proxy()));
+        let notifier = Box::new(Notifier::new(event_loop.create_proxy()));
         let (renderer, sender) =
             webrender::Renderer::new(gl.clone(), notifier, opts, None, device_size).unwrap();
         let api = sender.create_api();
@@ -160,8 +165,8 @@ impl Window {
         let pipeline_id = PipelineId(0, 0);
 
         Window {
-            events_loop,
-            context: Some(unsafe { context.make_not_current().unwrap() }),
+            event_loop,
+            context: Rc::new(unsafe { context.make_current().unwrap() }),
             renderer,
             name: window_options.name,
             epoch,
@@ -170,6 +175,116 @@ impl Window {
             api,
             font_key_hashmap: HashMap::new(),
             font_instance_key_hashmap: HashMap::new(),
+            window: None,
+        }
+    }
+
+    pub fn set_window(&mut self, window: Box<dyn WindowTrait>) {
+        self.window = Some(window);
+    }
+
+    pub fn run(&mut self) {
+        let mut timer = Timer::new(Duration::from_millis(4));
+        let mut exit = false;
+        let mut frame_builder_option = None;
+
+        while !exit {
+            let mut events = vec![];
+
+            self.event_loop
+                .run_return(|global_event, _event_loop_window_target, control_flow| {
+                    match global_event {
+                        winit::event::Event::WindowEvent { event, .. } => match event {
+                            winit::event::WindowEvent::CloseRequested => exit = true,
+                            winit::event::WindowEvent::KeyboardInput {
+                                input:
+                                    winit::event::KeyboardInput {
+                                        state: winit::event::ElementState::Pressed,
+                                        virtual_keycode: Some(key),
+                                        ..
+                                    },
+                                ..
+                            } => match key {
+                                winit::event::VirtualKeyCode::Escape => exit = true,
+                                winit::event::VirtualKeyCode::P => {
+                                    println!("set flags {}", self.name);
+                                    self.api.send_debug_cmd(DebugCommand::SetFlags(
+                                        DebugFlags::PROFILER_DBG,
+                                    ))
+                                }
+                                _ => {}
+                            },
+                            winit::event::WindowEvent::MouseInput {
+                                state: winit::event::ElementState::Pressed,
+                                button: winit::event::MouseButton::Left,
+                                ..
+                            } => self.context.window().drag_window().unwrap(),
+                            _ => {}
+                        },
+                        winit::event::Event::RedrawRequested(window_id) => {
+                            events.push(Event::RedrawRequested(window_id))
+                        }
+                        _ => {}
+                    };
+
+                    *control_flow = winit::event_loop::ControlFlow::Exit
+                });
+
+            if let Some(mut window) = self.window.take() {
+                window.on_event(events, self);
+
+                let mut frame_builder = match frame_builder_option.take() {
+                    Some(frame_builder) => frame_builder,
+                    None => {
+                        let device_pixel_ratio = self.context.window().scale_factor() as f32;
+                        let device_size = {
+                            let size = self.context.window().inner_size();
+                            DeviceIntSize::new(size.width as i32, size.height as i32)
+                        };
+                        let layout_size =
+                            device_size.to_f32() / euclid::Scale::new(device_pixel_ratio);
+                        let builder = DisplayListBuilder::new(self.pipeline_id, layout_size);
+                        let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
+                        let bounds = LayoutRect::from_size(layout_size);
+
+                        FrameBuilder {
+                            device_size,
+                            layout_size,
+                            builder,
+                            space_and_clip,
+                            bounds,
+                        }
+                    }
+                };
+
+                if window.should_rerender() {
+                    window.render(&mut frame_builder, self);
+
+                    let mut txn = Transaction::new();
+
+                    txn.set_display_list(
+                        self.epoch,
+                        None,
+                        frame_builder.layout_size,
+                        frame_builder.builder.clone().finalize(),
+                        true,
+                    );
+                    txn.set_root_pipeline(self.pipeline_id);
+                    txn.generate_frame();
+
+                    self.api.send_transaction(self.document_id, txn);
+                }
+
+                self.renderer.update();
+                self.renderer.render(frame_builder.device_size).unwrap();
+                self.context.swap_buffers().ok();
+
+                frame_builder_option = Some(frame_builder);
+
+                self.window = Some(window);
+            }
+
+            timer.wait();
         }
     }
 
@@ -183,7 +298,7 @@ impl Window {
         self.api.send_transaction(self.document_id, txn);
     }
 
-    pub fn load_font(&mut self, name: &'static str, font_size: Au) -> Font {
+    pub fn load_font(&self, name: &'static str, font_size: Au) -> Font {
         let mut txn = Transaction::new();
 
         let font = Font::new(
@@ -205,58 +320,12 @@ impl Window {
         font
     }
 
-    pub fn unload_font(&mut self, font: Font) {
+    pub fn unload_font(&self, font: Font) {
         let mut txn = Transaction::new();
 
         txn.delete_font_instance(font.instance_key);
 
         self.api.send_transaction(self.document_id, txn);
-    }
-
-    pub fn build_frame(&mut self) -> FrameBuilder {
-        let context = unsafe { self.context.take().unwrap().make_current().unwrap() };
-        let device_pixel_ratio = context.window().scale_factor() as f32;
-        let device_size = {
-            let size = context.window().inner_size();
-            DeviceIntSize::new(size.width as i32, size.height as i32)
-        };
-        let layout_size = device_size.to_f32() / euclid::Scale::new(device_pixel_ratio);
-        let txn = Transaction::new();
-        let builder = DisplayListBuilder::new(self.pipeline_id, layout_size);
-        let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
-
-        let bounds = LayoutRect::from_size(layout_size);
-
-        FrameBuilder {
-            context,
-            device_size,
-            layout_size,
-            txn,
-            builder,
-            space_and_clip,
-            bounds,
-        }
-    }
-
-    pub fn render_frame(&mut self, mut frame_builder: FrameBuilder) {
-        frame_builder.txn.set_display_list(
-            self.epoch,
-            None,
-            frame_builder.layout_size,
-            frame_builder.builder.finalize(),
-            true,
-        );
-        frame_builder.txn.set_root_pipeline(self.pipeline_id);
-        frame_builder.txn.generate_frame();
-
-        self.api
-            .send_transaction(self.document_id, frame_builder.txn);
-        self.renderer.update();
-        self.renderer.render(frame_builder.device_size).unwrap();
-
-        frame_builder.context.swap_buffers().ok();
-
-        self.context = Some(unsafe { frame_builder.context.make_not_current().unwrap() });
     }
 
     fn load_icon(pathname: &'static str) -> Option<winit::window::Icon> {
@@ -276,6 +345,27 @@ impl Window {
     pub fn deinit(self) {
         self.renderer.deinit();
     }
+}
+
+pub struct FrameBuilder {
+    pub device_size: webrender::euclid::Size2D<i32, units::DevicePixel>,
+    layout_size: webrender::euclid::Size2D<f32, units::LayoutPixel>,
+    pub builder: DisplayListBuilder,
+    pub space_and_clip: SpaceAndClipInfo,
+    pub bounds: LayoutRect,
+}
+
+#[derive(Clone, Copy)]
+pub enum Event {
+    RedrawRequested(winit::window::WindowId),
+}
+
+pub trait WindowTrait {
+    fn on_event(&mut self, events: Vec<Event>, window: &mut Window);
+
+    fn should_rerender(&self) -> bool;
+
+    fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut Window);
 }
 
 pub struct Font {
@@ -383,16 +473,6 @@ impl Font {
 
         text_bounds
     }
-}
-
-pub struct FrameBuilder {
-    context: glutin::WindowedContext<PossiblyCurrent>,
-    pub device_size: webrender::euclid::Size2D<i32, units::DevicePixel>,
-    layout_size: webrender::euclid::Size2D<f32, units::LayoutPixel>,
-    pub txn: Transaction,
-    pub builder: DisplayListBuilder,
-    pub space_and_clip: SpaceAndClipInfo,
-    pub bounds: LayoutRect,
 }
 
 fn load_file(name: &str) -> Vec<u8> {
