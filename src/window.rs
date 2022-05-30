@@ -48,7 +48,6 @@ impl RenderNotifier for Notifier {
 }
 
 pub struct WindowOptions {
-    pub name: &'static str,
     pub size: PhysicalSize<u32>,
     pub icon: Option<&'static str>,
     pub min_size: Option<PhysicalSize<u32>>,
@@ -64,9 +63,8 @@ pub struct WindowOptions {
 }
 
 impl WindowOptions {
-    pub fn new(name: &'static str, width: u32, height: u32, icon: Option<&'static str>) -> Self {
+    pub fn new(width: u32, height: u32, icon: Option<&'static str>) -> Self {
         Self {
-            name,
             size: PhysicalSize::new(width, height),
             icon,
             min_size: None,
@@ -86,7 +84,6 @@ impl WindowOptions {
 pub struct WindowWrapper {
     pub context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
     pub renderer: webrender::Renderer,
-    pub name: &'static str,
     pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
@@ -100,7 +97,6 @@ impl WindowWrapper {
     fn new(
         context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
         renderer: webrender::Renderer,
-        name: &'static str,
         pipeline_id: PipelineId,
         document_id: DocumentId,
         epoch: Epoch,
@@ -113,7 +109,6 @@ impl WindowWrapper {
         Self {
             context,
             renderer,
-            name,
             pipeline_id,
             document_id,
             epoch,
@@ -248,8 +243,9 @@ impl Window {
         document_layer: DocumentLayer,
     ) -> Self {
         let event_loop = winit::event_loop::EventLoop::new();
+        let window = DefaultWindow::new();
         let mut window_builder = winit::window::WindowBuilder::new()
-            .with_title(window_options.name)
+            .with_title(window.get_title())
             .with_inner_size(window_options.size)
             .with_resizable(window_options.resizable)
             .with_fullscreen(window_options.fullscreen)
@@ -315,7 +311,6 @@ impl Window {
             wrapper: WindowWrapper::new(
                 Rc::new(context),
                 renderer,
-                window_options.name,
                 pipeline_id,
                 document_id,
                 epoch,
@@ -323,12 +318,16 @@ impl Window {
                 HashMap::new(),
                 HashMap::new(),
             ),
-            window: DefaultWindow::new(),
+            window,
         }
     }
 
     pub fn set_window(&mut self, window: Box<dyn WindowTrait>) {
         self.window = window;
+        self.wrapper
+            .context
+            .window()
+            .set_title(self.window.get_title());
     }
 
     pub fn run(&mut self) {
@@ -365,7 +364,7 @@ impl Window {
                                     exit = true;
                                 }
                                 winit::event::VirtualKeyCode::P => {
-                                    println!("set flags {}", self.wrapper.name);
+                                    println!("set flags {}", self.window.get_title());
                                     self.wrapper.api.send_debug_cmd(DebugCommand::SetFlags(
                                         DebugFlags::PROFILER_DBG,
                                     ));
@@ -552,6 +551,8 @@ pub enum Event {
 }
 
 pub trait WindowTrait {
+    fn get_title(&self) -> &'static str;
+
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper);
 
     fn should_rerender(&self) -> bool;
@@ -568,6 +569,10 @@ impl DefaultWindow {
 }
 
 impl WindowTrait for DefaultWindow {
+    fn get_title(&self) -> &'static str {
+        ""
+    }
+
     fn on_event(&mut self, _: Event, _: &mut WindowWrapper) {}
 
     fn should_rerender(&self) -> bool {

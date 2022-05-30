@@ -10,7 +10,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use winit::dpi::PhysicalSize;
 
 fn main() {
-    let mut window_options = window::WindowOptions::new("test", 1080, 720, Some("./ui/icon.png"));
+    let mut window_options = window::WindowOptions::new(1080, 720, Some("./ui/icon.png"));
     window_options.transparent = true;
     window_options.decorations = false;
     window_options.min_size = Some(PhysicalSize::new(533, 300));
@@ -110,6 +110,10 @@ impl App {
 }
 
 impl window::WindowTrait for App {
+    fn get_title(&self) -> &'static str {
+        "Mad rust"
+    }
+
     fn on_event(&mut self, _event: window::Event, _window: &mut window::WindowWrapper) {}
 
     fn should_rerender(&self) -> bool {
