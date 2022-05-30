@@ -2,6 +2,7 @@ mod window;
 
 use webrender::api::units::*;
 use webrender::api::*;
+use window::ext::*;
 #[cfg(target_os = "windows")]
 use window_vibrancy::apply_blur;
 #[cfg(target_os = "macos")]
@@ -54,6 +55,52 @@ impl App {
             has_rendered: false,
         })
     }
+
+    fn draw_window_button(
+        &self,
+        position: LayoutPoint,
+        size: LayoutSize,
+        color: ColorU,
+        frame_builder: &mut window::FrameBuilder,
+    ) {
+        let builder = &mut frame_builder.builder;
+        let edge = 3.0;
+        let (width, _) = size.to_tuple();
+
+        builder.push_rounded_rect(
+            &CommonItemProperties::new(
+                LayoutRect::new(
+                    position - LayoutSize::new(edge, 0.0),
+                    LayoutSize::new(edge, edge),
+                ),
+                frame_builder.space_and_clip,
+            ),
+            ColorF::from(color),
+            BorderRadius::new(0.0, edge, 0.0, 0.0),
+            ClipMode::ClipOut,
+        );
+        builder.push_rounded_rect(
+            &CommonItemProperties::new(
+                LayoutRect::new(position, size),
+                frame_builder.space_and_clip,
+            ),
+            ColorF::from(color),
+            BorderRadius::new(0.0, 0.0, 3.0, 3.0),
+            ClipMode::Clip,
+        );
+        builder.push_rounded_rect(
+            &CommonItemProperties::new(
+                LayoutRect::new(
+                    position + LayoutSize::new(width, 0.0),
+                    LayoutSize::new(edge, edge),
+                ),
+                frame_builder.space_and_clip,
+            ),
+            ColorF::from(color),
+            BorderRadius::new(edge, 0.0, 0.0, 0.0),
+            ClipMode::ClipOut,
+        );
+    }
 }
 
 impl window::WindowTrait for App {
@@ -64,32 +111,31 @@ impl window::WindowTrait for App {
     }
 
     fn render(&mut self, frame_builder: &mut window::FrameBuilder, window: &mut window::Window) {
-        let builder = &mut frame_builder.builder;
-
-        builder.push_simple_stacking_context(
+        frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min(),
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        builder.push_rect(
-            &CommonItemProperties::new(
-                LayoutRect::new(
-                    LayoutPoint::new(100.0, 200.0),
-                    LayoutSize::new(100.0, 200.0),
-                ),
-                frame_builder.space_and_clip,
-            ),
-            ColorF::new(0.0, 1.0, 0.0, 1.0),
+        self.draw_window_button(
+            LayoutPoint::new(100.0, 0.0),
+            LayoutSize::new(40.0, 30.0),
+            ColorU::new(50, 221, 23, 100),
+            frame_builder,
         );
 
-        self.font.push_text(
+        self.draw_window_button(
+            LayoutPoint::new(150.0, 0.0),
+            LayoutSize::new(40.0, 30.0),
+            ColorU::new(255, 189, 0, 100),
             frame_builder,
-            &window.api,
-            "Salut comment\n ça\r\tva",
-            ColorF::new(1.0, 1.0, 0.0, 1.0),
-            None,
-            LayoutPoint::new(100.0, 50.0),
+        );
+
+        self.draw_window_button(
+            LayoutPoint::new(200.0, 0.0),
+            LayoutSize::new(40.0, 30.0),
+            ColorU::new(255, 79, 0, 100),
+            frame_builder,
         );
 
         frame_builder.builder.pop_stacking_context();

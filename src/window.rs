@@ -1,3 +1,5 @@
+pub mod ext;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -86,7 +88,7 @@ pub struct Window {
     pub context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
     pub renderer: webrender::Renderer,
     pub name: &'static str,
-    pipeline_id: PipelineId,
+    pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
     pub api: RenderApi,
@@ -183,10 +185,24 @@ impl Window {
         self.window = Some(window);
     }
 
+    fn init_frame_builder(&self) -> FrameBuilder {
+        let device_pixel_ratio = self.context.window().scale_factor() as f32;
+        let device_size = {
+            let size = self.context.window().inner_size();
+            DeviceIntSize::new(size.width as i32, size.height as i32)
+        };
+        let layout_size = device_size.to_f32() / euclid::Scale::new(device_pixel_ratio);
+        let builder = DisplayListBuilder::new(self.pipeline_id, layout_size);
+        let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
+        let bounds = LayoutRect::from_size(layout_size);
+
+        FrameBuilder::new(device_size, layout_size, builder, space_and_clip, bounds)
+    }
+
     pub fn run(&mut self) {
         let mut timer = Timer::new(Duration::from_millis(4));
         let mut exit = false;
-        let mut frame_builder_option = None;
+        let mut frame_builder = self.init_frame_builder();
 
         while !exit {
             let mut events = vec![];
@@ -233,30 +249,6 @@ impl Window {
             if let Some(mut window) = self.window.take() {
                 window.on_event(events, self);
 
-                let mut frame_builder = match frame_builder_option.take() {
-                    Some(frame_builder) => frame_builder,
-                    None => {
-                        let device_pixel_ratio = self.context.window().scale_factor() as f32;
-                        let device_size = {
-                            let size = self.context.window().inner_size();
-                            DeviceIntSize::new(size.width as i32, size.height as i32)
-                        };
-                        let layout_size =
-                            device_size.to_f32() / euclid::Scale::new(device_pixel_ratio);
-                        let builder = DisplayListBuilder::new(self.pipeline_id, layout_size);
-                        let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
-                        let bounds = LayoutRect::from_size(layout_size);
-
-                        FrameBuilder {
-                            device_size,
-                            layout_size,
-                            builder,
-                            space_and_clip,
-                            bounds,
-                        }
-                    }
-                };
-
                 if window.should_rerender() {
                     window.render(&mut frame_builder, self);
 
@@ -273,14 +265,13 @@ impl Window {
                     txn.generate_frame();
 
                     self.api.send_transaction(self.document_id, txn);
+
+                    frame_builder = self.init_frame_builder();
                 }
 
                 self.renderer.update();
                 self.renderer.render(frame_builder.device_size).unwrap();
                 self.context.swap_buffers().ok();
-
-                frame_builder_option = Some(frame_builder);
-
                 self.window = Some(window);
             }
 
@@ -355,17 +346,22 @@ pub struct FrameBuilder {
     pub bounds: LayoutRect,
 }
 
-#[derive(Clone, Copy)]
-pub enum Event {
-    RedrawRequested(winit::window::WindowId),
-}
-
-pub trait WindowTrait {
-    fn on_event(&mut self, events: Vec<Event>, window: &mut Window);
-
-    fn should_rerender(&self) -> bool;
-
-    fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut Window);
+impl FrameBuilder {
+    fn new(
+        device_size: webrender::euclid::Size2D<i32, units::DevicePixel>,
+        layout_size: webrender::euclid::Size2D<f32, units::LayoutPixel>,
+        builder: DisplayListBuilder,
+        space_and_clip: SpaceAndClipInfo,
+        bounds: LayoutRect,
+    ) -> Self {
+        Self {
+            device_size,
+            layout_size,
+            builder,
+            space_and_clip,
+            bounds,
+        }
+    }
 }
 
 pub struct Font {
@@ -375,7 +371,7 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(font_instance_key: FontInstanceKey, font_key: Rc<FontKey>, font_size: Au) -> Self {
+    fn new(font_instance_key: FontInstanceKey, font_key: Rc<FontKey>, font_size: Au) -> Self {
         Self {
             instance_key: font_instance_key,
             key: font_key,
@@ -473,6 +469,19 @@ impl Font {
 
         text_bounds
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum Event {
+    RedrawRequested(winit::window::WindowId),
+}
+
+pub trait WindowTrait {
+    fn on_event(&mut self, events: Vec<Event>, window: &mut Window);
+
+    fn should_rerender(&self) -> bool;
+
+    fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut Window);
 }
 
 fn load_file(name: &str) -> Vec<u8> {
