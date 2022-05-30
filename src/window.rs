@@ -132,14 +132,10 @@ impl WindowWrapper {
         self.context.window().inner_size()
     }
 
-    fn update_device_size(&mut self) {
+    fn init_frame_builder(&mut self) -> FrameBuilder {
         let window_size = self.get_window_size();
 
         self.device_size = DeviceIntSize::new(window_size.width as i32, window_size.height as i32);
-    }
-
-    fn init_frame_builder(&mut self) -> FrameBuilder {
-        self.update_device_size();
 
         let layout_size = self.device_size.to_f32()
             / euclid::Scale::new(self.context.window().scale_factor() as f32);

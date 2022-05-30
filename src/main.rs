@@ -62,49 +62,50 @@ impl App {
         })
     }
 
-    fn draw_window_button(
+    fn draw_window_buttons(
         &self,
-        position: LayoutPoint,
-        size: LayoutSize,
-        color: ColorU,
+        window_size: PhysicalSize<u32>,
         frame_builder: &mut window::FrameBuilder,
     ) {
         let builder = &mut frame_builder.builder;
-        let edge = 3.0;
-        let (width, _) = size.to_tuple();
 
         builder.push_rounded_rect(
             &CommonItemProperties::new(
                 LayoutRect::new(
-                    position - LayoutSize::new(edge, 0.0),
-                    LayoutSize::new(edge, edge),
+                    LayoutPoint::new(window_size.width as f32 - 150.0, 7.0),
+                    LayoutSize::new(40.0, 30.0),
                 ),
                 frame_builder.space_and_clip,
             ),
-            ColorF::from(color),
-            BorderRadius::new(0.0, edge, 0.0, 0.0),
-            ClipMode::ClipOut,
-        );
-        builder.push_rounded_rect(
-            &CommonItemProperties::new(
-                LayoutRect::new(position, size),
-                frame_builder.space_and_clip,
-            ),
-            ColorF::from(color),
-            BorderRadius::new(0.0, 0.0, 3.0, 3.0),
+            ColorF::from(ColorU::new(50, 221, 23, 100)),
+            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
+
         builder.push_rounded_rect(
             &CommonItemProperties::new(
                 LayoutRect::new(
-                    position + LayoutSize::new(width, 0.0),
-                    LayoutSize::new(edge, edge),
+                    LayoutPoint::new(window_size.width as f32 - 100.0, 7.0),
+                    LayoutSize::new(40.0, 30.0),
                 ),
                 frame_builder.space_and_clip,
             ),
-            ColorF::from(color),
-            BorderRadius::new(edge, 0.0, 0.0, 0.0),
-            ClipMode::ClipOut,
+            ColorF::from(ColorU::new(255, 189, 0, 100)),
+            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            ClipMode::Clip,
+        );
+
+        builder.push_rounded_rect(
+            &CommonItemProperties::new(
+                LayoutRect::new(
+                    LayoutPoint::new(window_size.width as f32 - 50.0, 7.0),
+                    LayoutSize::new(40.0, 30.0),
+                ),
+                frame_builder.space_and_clip,
+            ),
+            ColorF::from(ColorU::new(255, 79, 0, 100)),
+            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            ClipMode::Clip,
         );
     }
 }
@@ -133,26 +134,7 @@ impl window::WindowTrait for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        self.draw_window_button(
-            LayoutPoint::new(window_size.width as f32 - 157.0, 0.0),
-            LayoutSize::new(40.0, 30.0),
-            ColorU::new(50, 221, 23, 100),
-            frame_builder,
-        );
-
-        self.draw_window_button(
-            LayoutPoint::new(window_size.width as f32 - 106.0, 0.0),
-            LayoutSize::new(40.0, 30.0),
-            ColorU::new(255, 189, 0, 100),
-            frame_builder,
-        );
-
-        self.draw_window_button(
-            LayoutPoint::new(window_size.width as f32 - 55.0, 0.0),
-            LayoutSize::new(40.0, 30.0),
-            ColorU::new(255, 79, 0, 100),
-            frame_builder,
-        );
+        self.draw_window_buttons(window_size, frame_builder);
 
         frame_builder.builder.pop_stacking_context();
 
