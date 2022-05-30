@@ -89,7 +89,6 @@ pub struct WindowWrapper {
     epoch: Epoch,
     pub api: RenderApi,
     font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
-    font_instance_key_hashmap: HashMap<Rc<FontInstanceKey>, Rc<FontKey>>,
     device_size: DeviceIntSize,
 }
 
@@ -102,7 +101,6 @@ impl WindowWrapper {
         epoch: Epoch,
         api: RenderApi,
         font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
-        font_instance_key_hashmap: HashMap<Rc<FontInstanceKey>, Rc<FontKey>>,
     ) -> Self {
         let window_size = context.window().inner_size();
 
@@ -114,7 +112,6 @@ impl WindowWrapper {
             epoch,
             api,
             font_key_hashmap,
-            font_instance_key_hashmap,
             device_size: DeviceIntSize::new(window_size.width as i32, window_size.height as i32),
         }
     }
@@ -315,7 +312,6 @@ impl Window {
                 document_id,
                 epoch,
                 api,
-                HashMap::new(),
                 HashMap::new(),
             ),
             window,
