@@ -24,7 +24,7 @@ fn main() {
     {
         // add background blur effect on windows and macos
         #[cfg(target_os = "windows")]
-        apply_blur(&window.context.window(), None).ok();
+        apply_blur(&window.wrapper.context.window(), None).ok();
 
         #[cfg(target_os = "macos")]
         apply_vibrancy(
@@ -34,9 +34,15 @@ fn main() {
         .ok();
     }
 
-    window.load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
+    window
+        .wrapper
+        .load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
 
-    let app = App::new(window.load_font("OpenSans", units::Au::from_f32_px(32.0)));
+    let app = App::new(
+        window
+            .wrapper
+            .load_font("OpenSans", units::Au::from_f32_px(32.0)),
+    );
 
     window.set_window(app);
     window.run();
@@ -45,14 +51,14 @@ fn main() {
 
 struct App {
     font: window::Font,
-    has_rendered: bool,
+    do_render: bool,
 }
 
 impl App {
     fn new(font: window::Font) -> Box<Self> {
         Box::new(Self {
             font,
-            has_rendered: false,
+            do_render: true,
         })
     }
 
@@ -104,13 +110,19 @@ impl App {
 }
 
 impl window::WindowTrait for App {
-    fn on_event(&mut self, _: Vec<window::Event>, _: &mut window::Window) {}
+    fn on_event(&mut self, _event: window::Event, _window: &mut window::WindowWrapper) {}
 
     fn should_rerender(&self) -> bool {
-        !self.has_rendered
+        self.do_render
     }
 
-    fn render(&mut self, frame_builder: &mut window::FrameBuilder, window: &mut window::Window) {
+    fn render(
+        &mut self,
+        frame_builder: &mut window::FrameBuilder,
+        window: &mut window::WindowWrapper,
+    ) {
+        let window_size = window.get_window_size();
+
         frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min(),
             frame_builder.space_and_clip.spatial_id,
@@ -118,21 +130,21 @@ impl window::WindowTrait for App {
         );
 
         self.draw_window_button(
-            LayoutPoint::new(100.0, 0.0),
+            LayoutPoint::new(window_size.width as f32 - 157.0, 0.0),
             LayoutSize::new(40.0, 30.0),
             ColorU::new(50, 221, 23, 100),
             frame_builder,
         );
 
         self.draw_window_button(
-            LayoutPoint::new(150.0, 0.0),
+            LayoutPoint::new(window_size.width as f32 - 106.0, 0.0),
             LayoutSize::new(40.0, 30.0),
             ColorU::new(255, 189, 0, 100),
             frame_builder,
         );
 
         self.draw_window_button(
-            LayoutPoint::new(200.0, 0.0),
+            LayoutPoint::new(window_size.width as f32 - 55.0, 0.0),
             LayoutSize::new(40.0, 30.0),
             ColorU::new(255, 79, 0, 100),
             frame_builder,
@@ -140,6 +152,6 @@ impl window::WindowTrait for App {
 
         frame_builder.builder.pop_stacking_context();
 
-        self.has_rendered = true;
+        self.do_render = false;
     }
 }
