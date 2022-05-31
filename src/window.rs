@@ -7,20 +7,24 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gleam::gl;
-use glutin::PossiblyCurrent;
+use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
+use png::{ColorType, Decoder};
 use util::time::Timer;
 use webrender::api::units::*;
 use webrender::api::*;
-use webrender::DebugFlags;
+use webrender::{DebugFlags, Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event::*;
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
 use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::window::{Icon, WindowBuilder};
 
 struct Notifier {
-    events_proxy: winit::event_loop::EventLoopProxy<()>,
+    events_proxy: EventLoopProxy<()>,
 }
 
 impl Notifier {
-    fn new(events_proxy: winit::event_loop::EventLoopProxy<()>) -> Notifier {
+    fn new(events_proxy: EventLoopProxy<()>) -> Notifier {
         Notifier { events_proxy }
     }
 }
@@ -48,6 +52,7 @@ impl RenderNotifier for Notifier {
 }
 
 pub struct WindowOptions {
+    pub title: &'static str,
     pub size: PhysicalSize<u32>,
     pub icon: Option<&'static str>,
     pub min_size: Option<PhysicalSize<u32>>,
@@ -63,8 +68,9 @@ pub struct WindowOptions {
 }
 
 impl WindowOptions {
-    pub fn new(width: u32, height: u32, icon: Option<&'static str>) -> Self {
+    pub fn new(title: &'static str, width: u32, height: u32, icon: Option<&'static str>) -> Self {
         Self {
+            title,
             size: PhysicalSize::new(width, height),
             icon,
             min_size: None,
@@ -82,8 +88,9 @@ impl WindowOptions {
 }
 
 pub struct WindowWrapper {
-    pub context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
-    pub renderer: webrender::Renderer,
+    pub title: &'static str,
+    pub context: Rc<WindowedContext<PossiblyCurrent>>,
+    pub renderer: Renderer,
     pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
@@ -94,8 +101,9 @@ pub struct WindowWrapper {
 
 impl WindowWrapper {
     fn new(
-        context: Rc<glutin::WindowedContext<PossiblyCurrent>>,
-        renderer: webrender::Renderer,
+        title: &'static str,
+        context: Rc<WindowedContext<PossiblyCurrent>>,
+        renderer: Renderer,
         pipeline_id: PipelineId,
         document_id: DocumentId,
         epoch: Epoch,
@@ -105,6 +113,7 @@ impl WindowWrapper {
         let window_size = context.window().inner_size();
 
         Self {
+            title,
             context,
             renderer,
             pipeline_id,
@@ -224,7 +233,7 @@ impl WindowWrapper {
 }
 
 pub struct Window {
-    event_loop: winit::event_loop::EventLoop<()>,
+    event_loop: EventLoop<()>,
     pub wrapper: WindowWrapper,
     window: Box<dyn WindowTrait>,
 }
@@ -235,10 +244,10 @@ impl Window {
         clear_color: Option<ColorF>,
         document_layer: DocumentLayer,
     ) -> Self {
-        let event_loop = winit::event_loop::EventLoop::new();
+        let event_loop = EventLoop::new();
         let window = DefaultWindow::new();
-        let mut window_builder = winit::window::WindowBuilder::new()
-            .with_title(window.get_title())
+        let mut window_builder = WindowBuilder::new()
+            .with_title(window_options.title)
             .with_inner_size(window_options.size)
             .with_resizable(window_options.resizable)
             .with_fullscreen(window_options.fullscreen)
@@ -258,8 +267,8 @@ impl Window {
             window_builder = window_builder.with_max_inner_size(max_size);
         }
 
-        let context = glutin::ContextBuilder::new()
-            .with_gl(glutin::GlRequest::GlThenGles {
+        let context = ContextBuilder::new()
+            .with_gl(GlRequest::GlThenGles {
                 opengl_version: (3, 2),
                 opengles_version: (3, 0),
             })
@@ -272,18 +281,18 @@ impl Window {
         let context = unsafe { context.make_current().unwrap() };
 
         let gl = match context.get_api() {
-            glutin::Api::OpenGl => unsafe {
+            Api::OpenGl => unsafe {
                 gl::GlFns::load_with(|symbol| context.get_proc_address(symbol) as *const _)
             },
-            glutin::Api::OpenGlEs => unsafe {
+            Api::OpenGlEs => unsafe {
                 gl::GlesFns::load_with(|symbol| context.get_proc_address(symbol) as *const _)
             },
-            glutin::Api::WebGl => unimplemented!(),
+            Api::WebGl => unimplemented!(),
         };
 
-        let opts = webrender::RendererOptions {
+        let opts = RendererOptions {
             clear_color,
-            ..webrender::RendererOptions::default()
+            ..RendererOptions::default()
         };
 
         let device_size = {
@@ -291,8 +300,7 @@ impl Window {
             DeviceIntSize::new(size.width as i32, size.height as i32)
         };
         let notifier = Box::new(Notifier::new(event_loop.create_proxy()));
-        let (renderer, sender) =
-            webrender::Renderer::new(gl, notifier, opts, None, device_size).unwrap();
+        let (renderer, sender) = Renderer::new(gl, notifier, opts, None, device_size).unwrap();
         let api = sender.create_api();
         let document_id = api.add_document(device_size, document_layer);
 
@@ -302,6 +310,7 @@ impl Window {
         Window {
             event_loop,
             wrapper: WindowWrapper::new(
+                window_options.title,
                 Rc::new(context),
                 renderer,
                 pipeline_id,
@@ -316,67 +325,73 @@ impl Window {
 
     pub fn set_window(&mut self, window: Box<dyn WindowTrait>) {
         self.window = window;
-        self.wrapper
-            .context
-            .window()
-            .set_title(self.window.get_title());
     }
 
     pub fn run(&mut self) {
         let mut timer = Timer::new(Duration::from_millis(12));
-        let mut exit = false;
 
-        while !exit {
+        loop {
+            let mut exit = false;
+
             self.event_loop
                 .run_return(|global_event, _event_loop_window_target, control_flow| {
+                    *control_flow = ControlFlow::Exit;
+
                     match global_event {
                         winit::event::Event::WindowEvent { event, .. } => match event {
-                            winit::event::WindowEvent::CloseRequested => {
+                            WindowEvent::CloseRequested => {
                                 self.window.on_event(Event::CloseRequest, &mut self.wrapper);
 
                                 exit = true;
                             }
-                            winit::event::WindowEvent::Resized(size) => {
+                            WindowEvent::Resized(size) => {
                                 self.window
                                     .on_event(Event::Resized(size), &mut self.wrapper);
                                 self.wrapper.redraw(&mut self.window, Some(size));
                             }
-                            winit::event::WindowEvent::KeyboardInput {
+                            WindowEvent::KeyboardInput {
                                 input:
-                                    winit::event::KeyboardInput {
-                                        state: winit::event::ElementState::Pressed,
+                                    KeyboardInput {
+                                        state: ElementState::Pressed,
                                         virtual_keycode: Some(key),
                                         ..
                                     },
                                 ..
                             } => match key {
-                                winit::event::VirtualKeyCode::Escape => {
-                                    self.window.on_event(Event::CloseRequest, &mut self.wrapper);
-
-                                    exit = true;
-                                }
-                                winit::event::VirtualKeyCode::P => {
-                                    println!("set flags {}", self.window.get_title());
+                                VirtualKeyCode::P => {
+                                    println!("set flags {}", self.wrapper.title);
                                     self.wrapper.api.send_debug_cmd(DebugCommand::SetFlags(
                                         DebugFlags::PROFILER_DBG,
                                     ));
                                 }
                                 _ => {}
                             },
-                            winit::event::WindowEvent::MouseInput {
-                                state: winit::event::ElementState::Pressed,
-                                button: winit::event::MouseButton::Left,
+                            WindowEvent::CursorMoved { position, .. } => self
+                                .window
+                                .on_event(Event::MousePosition(position), &mut self.wrapper),
+                            WindowEvent::MouseInput {
+                                state: ElementState::Pressed,
+                                button,
                                 ..
-                            } => {
-                                self.wrapper.context.window().drag_window().unwrap();
-                            }
+                            } => self
+                                .window
+                                .on_event(Event::MousePressed(button), &mut self.wrapper),
+                            WindowEvent::MouseInput {
+                                state: ElementState::Released,
+                                button,
+                                ..
+                            } => self
+                                .window
+                                .on_event(Event::MouseReleased(button), &mut self.wrapper),
                             _ => {}
                         },
                         _ => {}
                     };
-
-                    *control_flow = winit::event_loop::ControlFlow::Exit;
                 });
+
+            if exit || self.window.should_exit() {
+                break;
+            }
 
             self.wrapper.redraw(&mut self.window, None);
 
@@ -384,15 +399,15 @@ impl Window {
         }
     }
 
-    fn load_icon(pathname: &'static str) -> Option<winit::window::Icon> {
-        let decoder = png::Decoder::new(File::open(pathname).unwrap());
+    fn load_icon(pathname: &'static str) -> Option<Icon> {
+        let decoder = Decoder::new(File::open(pathname).unwrap());
         let mut reader = decoder.read_info().unwrap();
         let mut buf = vec![0; reader.output_buffer_size()];
         let info = reader.next_frame(&mut buf).unwrap();
         let bytes = &buf[..info.buffer_size()];
 
-        if let png::ColorType::Rgba = info.color_type {
-            winit::window::Icon::from_rgba(bytes.to_vec(), info.width, info.height).ok()
+        if let ColorType::Rgba = info.color_type {
+            Icon::from_rgba(bytes.to_vec(), info.width, info.height).ok()
         } else {
             None
         }
@@ -404,8 +419,8 @@ impl Window {
 }
 
 pub struct FrameBuilder {
-    pub device_size: webrender::euclid::Size2D<i32, units::DevicePixel>,
-    layout_size: webrender::euclid::Size2D<f32, units::LayoutPixel>,
+    pub device_size: DeviceIntSize,
+    layout_size: LayoutSize,
     pub builder: DisplayListBuilder,
     pub space_and_clip: SpaceAndClipInfo,
     pub bounds: LayoutRect,
@@ -413,8 +428,8 @@ pub struct FrameBuilder {
 
 impl FrameBuilder {
     fn new(
-        device_size: webrender::euclid::Size2D<i32, units::DevicePixel>,
-        layout_size: webrender::euclid::Size2D<f32, units::LayoutPixel>,
+        device_size: DeviceIntSize,
+        layout_size: LayoutSize,
         builder: DisplayListBuilder,
         space_and_clip: SpaceAndClipInfo,
         bounds: LayoutRect,
@@ -540,12 +555,15 @@ impl Font {
 pub enum Event {
     CloseRequest,
     Resized(PhysicalSize<u32>),
+    MousePosition(PhysicalPosition<f64>),
+    MousePressed(MouseButton),
+    MouseReleased(MouseButton),
 }
 
 pub trait WindowTrait {
-    fn get_title(&self) -> &'static str;
-
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper);
+
+    fn should_exit(&self) -> bool;
 
     fn should_rerender(&self) -> bool;
 
@@ -561,11 +579,11 @@ impl DefaultWindow {
 }
 
 impl WindowTrait for DefaultWindow {
-    fn get_title(&self) -> &'static str {
-        ""
-    }
-
     fn on_event(&mut self, _: Event, _: &mut WindowWrapper) {}
+
+    fn should_exit(&self) -> bool {
+        false
+    }
 
     fn should_rerender(&self) -> bool {
         false
