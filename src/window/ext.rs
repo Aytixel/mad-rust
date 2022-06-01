@@ -1,7 +1,7 @@
 use webrender::api::units::LayoutSize;
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion, DisplayListBuilder,
-    ItemTag, SpaceAndClipInfo,
+    BorderRadius, ClipId, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion,
+    DisplayListBuilder, ItemTag, SpaceAndClipInfo,
 };
 
 pub trait CommonItemPropertiesExt {
@@ -31,7 +31,7 @@ pub trait DisplayListBuilderExt {
         color: ColorF,
         radii: BorderRadius,
         mode: ClipMode,
-    );
+    ) -> ClipId;
 }
 
 impl DisplayListBuilderExt for DisplayListBuilder {
@@ -41,7 +41,7 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         color: ColorF,
         radii: BorderRadius,
         mode: ClipMode,
-    ) {
+    ) -> ClipId {
         let clip_id = self.define_clip(
             &common.to_space_and_clip_info(),
             common.clip_rect,
@@ -54,6 +54,8 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         common.clip_id = clip_id;
 
         self.push_rect(&common, color);
+
+        clip_id
     }
 }
 
