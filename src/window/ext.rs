@@ -1,8 +1,28 @@
 use webrender::api::units::LayoutSize;
 use webrender::api::{
     BorderRadius, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion, DisplayListBuilder,
-    SpaceAndClipInfo,
+    ItemTag, SpaceAndClipInfo,
 };
+
+pub trait CommonItemPropertiesExt {
+    fn to_space_and_clip_info(&self) -> SpaceAndClipInfo;
+
+    fn add_item_tag(&mut self, item_tag: ItemTag) -> Self;
+}
+
+impl CommonItemPropertiesExt for CommonItemProperties {
+    fn to_space_and_clip_info(&self) -> SpaceAndClipInfo {
+        SpaceAndClipInfo {
+            spatial_id: self.spatial_id,
+            clip_id: self.clip_id,
+        }
+    }
+
+    fn add_item_tag(&mut self, item_tag: ItemTag) -> Self {
+        self.hit_info = Some(item_tag);
+        *self
+    }
+}
 
 pub trait DisplayListBuilderExt {
     fn push_rounded_rect(
@@ -23,25 +43,17 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         mode: ClipMode,
     ) {
         let clip_id = self.define_clip(
-            &SpaceAndClipInfo {
-                spatial_id: common.spatial_id,
-                clip_id: common.clip_id,
-            },
+            &common.to_space_and_clip_info(),
             common.clip_rect,
             [ComplexClipRegion::new(common.clip_rect, radii, mode)],
             None,
         );
 
-        self.push_rect(
-            &CommonItemProperties::new(
-                common.clip_rect,
-                SpaceAndClipInfo {
-                    spatial_id: common.spatial_id,
-                    clip_id: clip_id,
-                },
-            ),
-            color,
-        );
+        let mut common = *common;
+
+        common.clip_id = clip_id;
+
+        self.push_rect(&common, color);
     }
 }
 

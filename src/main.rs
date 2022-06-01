@@ -1,5 +1,7 @@
 mod window;
 
+use num::FromPrimitive;
+use num_derive::FromPrimitive;
 use webrender::api::units::*;
 use webrender::api::*;
 use window::ext::*;
@@ -51,12 +53,24 @@ fn main() {
     window.deinit();
 }
 
-#[derive(Clone)]
+#[derive(Clone, FromPrimitive)]
 enum AppEvent {
     CloseButton,
     MaximizeButton,
     MinimizeButton,
     TitleBar,
+}
+
+impl Into<u64> for AppEvent {
+    fn into(self) -> u64 {
+        self as u64
+    }
+}
+
+impl From<u64> for AppEvent {
+    fn from(value: u64) -> Self {
+        FromPrimitive::from_u64(value).unwrap()
+    }
 }
 
 struct App {
@@ -80,23 +94,28 @@ impl App {
 
     fn calculate_event(&mut self, window: &mut WindowWrapper) -> bool {
         if let Some(mouse_position) = self.mouse_position {
-            for (event, rect) in self.event_stack.clone() {
-                if rect.contains(LayoutPoint::new(
-                    mouse_position.x as f32,
-                    mouse_position.y as f32,
-                )) {
-                    match event {
-                        AppEvent::CloseButton => self.do_exit = true,
-                        AppEvent::MaximizeButton => window
-                            .context
-                            .window()
-                            .set_maximized(!window.context.window().is_maximized()),
-                        AppEvent::MinimizeButton => window.context.window().set_minimized(true),
-                        AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
-                    }
-
-                    return true;
+            if let Some(HitTestItem { tag, .. }) = window
+                .api
+                .hit_test(
+                    window.document_id,
+                    None,
+                    WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
+                    HitTestFlags::empty(),
+                )
+                .items
+                .pop()
+            {
+                match AppEvent::from(tag.0) {
+                    AppEvent::CloseButton => self.do_exit = true,
+                    AppEvent::MaximizeButton => window
+                        .context
+                        .window()
+                        .set_maximized(!window.context.window().is_maximized()),
+                    AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                    AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
                 }
+
+                return true;
             }
         }
 
@@ -113,7 +132,8 @@ impl App {
         );
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(title_bar_layout_rect, frame_builder.space_and_clip),
+            &CommonItemProperties::new(title_bar_layout_rect, frame_builder.space_and_clip)
+                .add_item_tag((AppEvent::TitleBar.into(), 0)),
             ColorF::from(ColorU::new(66, 66, 66, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -126,7 +146,8 @@ impl App {
         );
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
+            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip)
+                .add_item_tag((AppEvent::CloseButton.into(), 0)),
             ColorF::from(ColorU::new(255, 79, 0, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -139,7 +160,8 @@ impl App {
         );
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip),
+            &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip)
+                .add_item_tag((AppEvent::MaximizeButton.into(), 0)),
             ColorF::from(ColorU::new(255, 189, 0, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -152,7 +174,8 @@ impl App {
         );
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip),
+            &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip)
+                .add_item_tag((AppEvent::MinimizeButton.into(), 0)),
             ColorF::from(ColorU::new(50, 221, 23, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
