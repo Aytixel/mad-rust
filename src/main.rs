@@ -61,16 +61,21 @@ enum AppEvent {
     TitleBar,
 }
 
-impl Into<u64> for AppEvent {
+impl AppEvent {
     fn into(self) -> u64 {
         self as u64
     }
-}
 
-impl From<u64> for AppEvent {
     fn from(value: u64) -> Self {
         FromPrimitive::from_u64(value).unwrap()
     }
+}
+
+#[derive(Clone)]
+enum AppEventType {
+    MousePressed,
+    MouseReleased,
+    MousePosition,
 }
 
 struct App {
@@ -92,7 +97,11 @@ impl App {
         })
     }
 
-    fn calculate_event(&mut self, window: &mut WindowWrapper) -> bool {
+    fn calculate_event(
+        &mut self,
+        window: &mut WindowWrapper,
+        target_event_type: AppEventType,
+    ) -> bool {
         if let Some(mouse_position) = self.mouse_position {
             if let Some(HitTestItem { tag, .. }) = window
                 .api
@@ -105,14 +114,23 @@ impl App {
                 .items
                 .pop()
             {
-                match AppEvent::from(tag.0) {
-                    AppEvent::CloseButton => self.do_exit = true,
-                    AppEvent::MaximizeButton => window
-                        .context
-                        .window()
-                        .set_maximized(!window.context.window().is_maximized()),
-                    AppEvent::MinimizeButton => window.context.window().set_minimized(true),
-                    AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
+                let event = AppEvent::from(tag.0);
+
+                match target_event_type {
+                    AppEventType::MousePressed => match event {
+                        AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
+                        _ => {}
+                    },
+                    AppEventType::MouseReleased => match event {
+                        AppEvent::CloseButton => self.do_exit = true,
+                        AppEvent::MaximizeButton => window
+                            .context
+                            .window()
+                            .set_maximized(!window.context.window().is_maximized()),
+                        AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                        _ => {}
+                    },
+                    AppEventType::MousePosition => {}
                 }
 
                 return true;
@@ -197,9 +215,13 @@ impl WindowTrait for App {
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper) {
         match event {
             Event::MousePressed(MouseButton::Left) => {
-                self.calculate_event(window);
+                self.calculate_event(window, AppEventType::MousePressed);
+            }
+            Event::MouseReleased(MouseButton::Left) => {
+                self.calculate_event(window, AppEventType::MouseReleased);
             }
             Event::MousePosition(position) => {
+                self.calculate_event(window, AppEventType::MousePosition);
                 self.mouse_position = Some(position);
             }
             _ => {}
