@@ -332,22 +332,28 @@ impl Window {
 
         loop {
             let mut exit = false;
+            let mut old_window_size = self.wrapper.get_window_size();
 
             self.event_loop
                 .run_return(|global_event, _event_loop_window_target, control_flow| {
                     *control_flow = ControlFlow::Exit;
 
                     match global_event {
+                        winit::event::Event::RedrawRequested(_) => {
+                            // help redrawing the window when dragging and resizing it
+                            let window_size = self.wrapper.get_window_size();
+
+                            if old_window_size != window_size {
+                                self.wrapper.redraw(&mut self.window, Some(window_size));
+                            }
+
+                            old_window_size = window_size;
+                        }
                         winit::event::Event::WindowEvent { event, .. } => match event {
                             WindowEvent::CloseRequested => {
                                 self.window.on_event(Event::CloseRequest, &mut self.wrapper);
 
                                 exit = true;
-                            }
-                            WindowEvent::Resized(size) => {
-                                self.window
-                                    .on_event(Event::Resized(size), &mut self.wrapper);
-                                self.wrapper.redraw(&mut self.window, Some(size));
                             }
                             WindowEvent::KeyboardInput {
                                 input:
@@ -554,7 +560,6 @@ impl Font {
 #[derive(Clone, Copy)]
 pub enum Event {
     CloseRequest,
-    Resized(PhysicalSize<u32>),
     MousePosition(PhysicalPosition<f64>),
     MousePressed(MouseButton),
     MouseReleased(MouseButton),
