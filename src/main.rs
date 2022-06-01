@@ -83,7 +83,6 @@ struct App {
     do_render: bool,
     do_exit: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
-    event_stack: Vec<(AppEvent, LayoutRect)>,
 }
 
 impl App {
@@ -93,7 +92,6 @@ impl App {
             do_render: true,
             do_exit: false,
             mouse_position: None,
-            event_stack: vec![],
         })
     }
 
@@ -103,7 +101,7 @@ impl App {
         target_event_type: AppEventType,
     ) -> bool {
         if let Some(mouse_position) = self.mouse_position {
-            if let Some(HitTestItem { tag, .. }) = window
+            if let Some(hit_item) = window
                 .api
                 .hit_test(
                     window.document_id,
@@ -114,7 +112,7 @@ impl App {
                 .items
                 .pop()
             {
-                let event = AppEvent::from(tag.0);
+                let event = AppEvent::from(hit_item.tag.0);
 
                 match target_event_type {
                     AppEventType::MousePressed => match event {
@@ -130,7 +128,15 @@ impl App {
                         AppEvent::MinimizeButton => window.context.window().set_minimized(true),
                         _ => {}
                     },
-                    AppEventType::MousePosition => {}
+                    AppEventType::MousePosition => match event {
+                        AppEvent::CloseButton => self.do_exit = true,
+                        AppEvent::MaximizeButton => window
+                            .context
+                            .window()
+                            .set_maximized(!window.context.window().is_maximized()),
+                        AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                        _ => {}
+                    },
                 }
 
                 return true;
@@ -198,16 +204,6 @@ impl App {
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
-
-        // pushing events to the event stack
-        self.event_stack
-            .push((AppEvent::CloseButton, close_button_layout_rect));
-        self.event_stack
-            .push((AppEvent::MaximizeButton, maximize_button_layout_rect));
-        self.event_stack
-            .push((AppEvent::MinimizeButton, minimize_button_layout_rect));
-        self.event_stack
-            .push((AppEvent::TitleBar, title_bar_layout_rect));
     }
 }
 
@@ -237,8 +233,6 @@ impl WindowTrait for App {
     }
 
     fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper) {
-        self.event_stack.clear();
-
         let window_size = window.get_window_size();
 
         frame_builder.builder.push_simple_stacking_context(
