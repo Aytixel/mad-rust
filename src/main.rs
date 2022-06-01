@@ -56,6 +56,7 @@ enum AppEvent {
     CloseButton,
     MaximizeButton,
     MinimizeButton,
+    TitleBar,
 }
 
 struct App {
@@ -91,6 +92,7 @@ impl App {
                             .window()
                             .set_maximized(!window.context.window().is_maximized()),
                         AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                        AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
                     }
 
                     return true;
@@ -104,14 +106,24 @@ impl App {
     fn draw_title_bar(&mut self, window_size: PhysicalSize<u32>, frame_builder: &mut FrameBuilder) {
         let builder = &mut frame_builder.builder;
 
-        // close button
-        let close_button_layout_rect = LayoutRect::new(
-            LayoutPoint::new(window_size.width as f32 - 50.0, 7.0),
-            LayoutSize::new(40.0, 30.0),
+        // title bar
+        let title_bar_layout_rect = LayoutRect::new(
+            LayoutPoint::new(10.0, 10.0),
+            LayoutSize::new(window_size.width as f32 - 20.0, 35.0),
         );
 
-        self.event_stack
-            .push((AppEvent::CloseButton, close_button_layout_rect));
+        builder.push_rounded_rect(
+            &CommonItemProperties::new(title_bar_layout_rect, frame_builder.space_and_clip),
+            ColorF::from(ColorU::new(66, 66, 66, 100)),
+            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            ClipMode::Clip,
+        );
+
+        // close button
+        let close_button_layout_rect = LayoutRect::new(
+            LayoutPoint::new(window_size.width as f32 - 55.0, 15.0),
+            LayoutSize::new(35.0, 25.0),
+        );
 
         builder.push_rounded_rect(
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
@@ -122,12 +134,9 @@ impl App {
 
         // maximize button
         let maximize_button_layout_rect = LayoutRect::new(
-            LayoutPoint::new(window_size.width as f32 - 100.0, 7.0),
-            LayoutSize::new(40.0, 30.0),
+            LayoutPoint::new(window_size.width as f32 - 100.0, 15.0),
+            LayoutSize::new(35.0, 25.0),
         );
-
-        self.event_stack
-            .push((AppEvent::MaximizeButton, maximize_button_layout_rect));
 
         builder.push_rounded_rect(
             &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip),
@@ -138,12 +147,9 @@ impl App {
 
         // minimize button
         let minimize_button_layout_rect = LayoutRect::new(
-            LayoutPoint::new(window_size.width as f32 - 150.0, 7.0),
-            LayoutSize::new(40.0, 30.0),
+            LayoutPoint::new(window_size.width as f32 - 145.0, 15.0),
+            LayoutSize::new(35.0, 25.0),
         );
-
-        self.event_stack
-            .push((AppEvent::MinimizeButton, minimize_button_layout_rect));
 
         builder.push_rounded_rect(
             &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip),
@@ -151,6 +157,16 @@ impl App {
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
+
+        // pushing events to the event stack
+        self.event_stack
+            .push((AppEvent::CloseButton, close_button_layout_rect));
+        self.event_stack
+            .push((AppEvent::MaximizeButton, maximize_button_layout_rect));
+        self.event_stack
+            .push((AppEvent::MinimizeButton, minimize_button_layout_rect));
+        self.event_stack
+            .push((AppEvent::TitleBar, title_bar_layout_rect));
     }
 }
 
@@ -158,11 +174,11 @@ impl WindowTrait for App {
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper) {
         match event {
             Event::MousePressed(MouseButton::Left) => {
-                if !self.calculate_event(window) {
-                    window.context.window().drag_window().unwrap()
-                }
+                self.calculate_event(window);
             }
-            Event::MousePosition(position) => self.mouse_position = Some(position),
+            Event::MousePosition(position) => {
+                self.mouse_position = Some(position);
+            }
             _ => {}
         }
     }
