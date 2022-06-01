@@ -1,5 +1,9 @@
 pub mod ext;
 
+mod font;
+mod frame_builder;
+mod notifier;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -7,50 +11,23 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use font::Font;
+pub use frame_builder::FrameBuilder;
+
+use notifier::Notifier;
+
 use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
 use util::time::Timer;
-use webrender::api::units::*;
+use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, LayoutRect};
 use webrender::api::*;
 use webrender::{DebugFlags, Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::*;
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
+use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Icon, WindowBuilder};
-
-struct Notifier {
-    events_proxy: EventLoopProxy<()>,
-}
-
-impl Notifier {
-    fn new(events_proxy: EventLoopProxy<()>) -> Notifier {
-        Notifier { events_proxy }
-    }
-}
-
-impl RenderNotifier for Notifier {
-    fn clone(&self) -> Box<dyn RenderNotifier> {
-        Box::new(Notifier {
-            events_proxy: self.events_proxy.clone(),
-        })
-    }
-
-    fn wake_up(&self) {
-        self.events_proxy.send_event(()).ok();
-    }
-
-    fn new_frame_ready(
-        &self,
-        _: DocumentId,
-        _scrolled: bool,
-        _composite_needed: bool,
-        _render_time_ns: Option<u64>,
-    ) {
-        self.wake_up();
-    }
-}
 
 pub struct WindowOptions {
     pub title: &'static str,
@@ -434,158 +411,6 @@ impl<T> Window<T> {
     }
 }
 
-pub struct FrameBuilder {
-    pub device_size: DeviceIntSize,
-    layout_size: LayoutSize,
-    pub builder: DisplayListBuilder,
-    pub space_and_clip: SpaceAndClipInfo,
-    pub bounds: LayoutRect,
-}
-
-impl FrameBuilder {
-    fn new(
-        device_size: DeviceIntSize,
-        layout_size: LayoutSize,
-        builder: DisplayListBuilder,
-        space_and_clip: SpaceAndClipInfo,
-        bounds: LayoutRect,
-    ) -> Self {
-        Self {
-            device_size,
-            layout_size,
-            builder,
-            space_and_clip,
-            bounds,
-        }
-    }
-}
-
-pub struct Font {
-    pub instance_key: FontInstanceKey,
-    pub key: FontKey,
-    pub size: Au,
-    api: Rc<RenderApi>,
-    document_id: DocumentId,
-}
-
-impl Font {
-    fn new(
-        font_instance_key: FontInstanceKey,
-        font_key: FontKey,
-        font_size: Au,
-        api: Rc<RenderApi>,
-        document_id: DocumentId,
-    ) -> Self {
-        Self {
-            instance_key: font_instance_key,
-            key: font_key,
-            size: font_size,
-            api,
-            document_id,
-        }
-    }
-
-    pub fn push_text(
-        &self,
-        builder: &mut DisplayListBuilder,
-        api: &RenderApi,
-        text: &'static str,
-        color: ColorF,
-        position: LayoutPoint,
-        space_and_clip: SpaceAndClipInfo,
-        tab_size_option: Option<f32>,
-    ) -> LayoutRect {
-        let char_iterator: Vec<char> = text.chars().collect();
-        let tab_size = if let Some(tab_size) = tab_size_option {
-            tab_size
-        } else {
-            4.0
-        };
-        let glyph_indices: Vec<u32> = api
-            .get_glyph_indices(self.key, text)
-            .into_iter()
-            .flatten()
-            .collect();
-        let glyph_dimension_options =
-            api.get_glyph_dimensions(self.instance_key, glyph_indices.clone());
-        let mut glyph_instances = vec![];
-        let mut glyph_position = position;
-        let mut glyph_size = LayoutSize::new(0.0, self.size.to_f32_px());
-        let mut line_count = 1.0;
-        let mut char_width_mean = 0.0;
-        let mut char_width_count = 0;
-
-        for glyph_dimension_option in glyph_dimension_options.clone() {
-            if let Some(glyph_dimension) = glyph_dimension_option {
-                char_width_mean += glyph_dimension.width as f32;
-                char_width_count += 1;
-            }
-        }
-
-        char_width_mean /= char_width_count as f32;
-
-        for (index, glyph_indice) in glyph_indices.into_iter().enumerate() {
-            if let Some(glyph_dimension) = glyph_dimension_options[index] {
-                glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
-                glyph_instances.push(GlyphInstance {
-                    index: glyph_indice,
-                    point: glyph_position,
-                });
-                glyph_position +=
-                    LayoutSize::new(glyph_dimension.advance, -(self.size.to_f32_px()));
-                glyph_size += LayoutSize::new(glyph_dimension.advance, 0.0);
-            } else {
-                match char_iterator[index] {
-                    ' ' => {
-                        glyph_position += LayoutSize::new(char_width_mean, 0.0);
-                        glyph_size += LayoutSize::new(char_width_mean, 0.0);
-                    }
-                    '\t' => {
-                        glyph_position += LayoutSize::new(char_width_mean * tab_size, 0.0);
-                        glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0);
-                    }
-                    '\n' => {
-                        glyph_position = position;
-                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
-                        glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
-                        line_count += 1.0;
-                    }
-                    '\r' => {
-                        glyph_position = position;
-                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
-                        glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
-                        line_count += 1.0;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
-
-        let text_bounds = LayoutRect::new(position, glyph_size.to_vector().to_size());
-
-        builder.push_text(
-            &CommonItemProperties::new(text_bounds, space_and_clip),
-            text_bounds,
-            &glyph_instances,
-            self.instance_key,
-            color,
-            None,
-        );
-
-        text_bounds
-    }
-
-    pub fn unload(&self) {
-        let mut txn = Transaction::new();
-
-        txn.delete_font_instance(self.instance_key);
-
-        self.api.send_transaction(self.document_id, txn);
-    }
-}
-
 #[derive(Clone, Copy)]
 pub enum Event {
     MousePosition(PhysicalPosition<f64>),
@@ -626,6 +451,7 @@ impl WindowTrait for DefaultWindow {}
 fn load_file(name: &str) -> Vec<u8> {
     let mut file = File::open(name).unwrap();
     let mut buffer = vec![];
+
     file.read_to_end(&mut buffer).unwrap();
     buffer
 }
