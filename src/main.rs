@@ -1,5 +1,7 @@
 mod window;
 
+use std::collections::HashSet;
+
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::*;
@@ -53,7 +55,7 @@ fn main() {
     window.deinit();
 }
 
-#[derive(Clone, FromPrimitive)]
+#[derive(Clone, PartialEq, Eq, Hash, FromPrimitive)]
 enum AppEvent {
     CloseButton,
     MaximizeButton,
@@ -75,7 +77,7 @@ impl AppEvent {
 enum AppEventType {
     MousePressed,
     MouseReleased,
-    MousePosition,
+    MousePosition, // trigger over states
 }
 
 struct App {
@@ -83,6 +85,8 @@ struct App {
     do_render: bool,
     do_exit: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
+    over_states: HashSet<AppEvent>,
+    new_over_states: HashSet<AppEvent>,
 }
 
 impl App {
@@ -92,7 +96,20 @@ impl App {
             do_render: true,
             do_exit: false,
             mouse_position: None,
+            over_states: HashSet::new(),
+            new_over_states: HashSet::new(),
         })
+    }
+
+    fn update_over_state(&mut self) {
+        self.do_render = self.do_render || !self.over_states.is_subset(&self.new_over_states);
+        self.over_states = self.new_over_states.clone();
+        self.new_over_states.clear();
+    }
+
+    fn set_over_state(&mut self, event: AppEvent) {
+        self.do_render = true;
+        self.new_over_states.insert(event);
     }
 
     fn calculate_event(
@@ -101,46 +118,50 @@ impl App {
         target_event_type: AppEventType,
     ) -> bool {
         if let Some(mouse_position) = self.mouse_position {
-            if let Some(hit_item) = window
+            let hit_items = window
                 .api
                 .hit_test(
                     window.document_id,
                     None,
                     WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
-                    HitTestFlags::empty(),
+                    HitTestFlags::FIND_ALL,
                 )
-                .items
-                .pop()
-            {
+                .items;
+
+            self.update_over_state();
+
+            for (index, hit_item) in hit_items.iter().enumerate() {
                 let event = AppEvent::from(hit_item.tag.0);
 
-                match target_event_type {
-                    AppEventType::MousePressed => match event {
-                        AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
+                if index == 0 {
+                    match target_event_type {
+                        AppEventType::MousePressed => match event {
+                            AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
+                            _ => {}
+                        },
+                        AppEventType::MouseReleased => match event {
+                            AppEvent::CloseButton => self.do_exit = true,
+                            AppEvent::MaximizeButton => window
+                                .context
+                                .window()
+                                .set_maximized(!window.context.window().is_maximized()),
+                            AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                            _ => {}
+                        },
                         _ => {}
-                    },
-                    AppEventType::MouseReleased => match event {
-                        AppEvent::CloseButton => self.do_exit = true,
-                        AppEvent::MaximizeButton => window
-                            .context
-                            .window()
-                            .set_maximized(!window.context.window().is_maximized()),
-                        AppEvent::MinimizeButton => window.context.window().set_minimized(true),
-                        _ => {}
-                    },
-                    AppEventType::MousePosition => match event {
-                        AppEvent::CloseButton => self.do_exit = true,
-                        AppEvent::MaximizeButton => window
-                            .context
-                            .window()
-                            .set_maximized(!window.context.window().is_maximized()),
-                        AppEvent::MinimizeButton => window.context.window().set_minimized(true),
-                        _ => {}
-                    },
+                    }
                 }
 
-                return true;
+                // over states processing
+                match event {
+                    AppEvent::CloseButton => self.set_over_state(AppEvent::CloseButton),
+                    AppEvent::MaximizeButton => self.set_over_state(AppEvent::MaximizeButton),
+                    AppEvent::MinimizeButton => self.set_over_state(AppEvent::MinimizeButton),
+                    _ => {}
+                }
             }
+
+            return hit_items.len() > 0;
         }
 
         false
@@ -172,7 +193,16 @@ impl App {
         builder.push_rounded_rect(
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip)
                 .add_item_tag((AppEvent::CloseButton.into(), 0)),
-            ColorF::from(ColorU::new(255, 79, 0, 100)),
+            ColorF::from(ColorU::new(
+                255,
+                79,
+                0,
+                if self.over_states.contains(&AppEvent::CloseButton) {
+                    150
+                } else {
+                    100
+                },
+            )),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -186,7 +216,16 @@ impl App {
         builder.push_rounded_rect(
             &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip)
                 .add_item_tag((AppEvent::MaximizeButton.into(), 0)),
-            ColorF::from(ColorU::new(255, 189, 0, 100)),
+            ColorF::from(ColorU::new(
+                255,
+                189,
+                0,
+                if self.over_states.contains(&AppEvent::MaximizeButton) {
+                    150
+                } else {
+                    100
+                },
+            )),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -200,7 +239,16 @@ impl App {
         builder.push_rounded_rect(
             &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip)
                 .add_item_tag((AppEvent::MinimizeButton.into(), 0)),
-            ColorF::from(ColorU::new(50, 221, 23, 100)),
+            ColorF::from(ColorU::new(
+                50,
+                221,
+                23,
+                if self.over_states.contains(&AppEvent::MinimizeButton) {
+                    150
+                } else {
+                    100
+                },
+            )),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
