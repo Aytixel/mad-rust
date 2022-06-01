@@ -1,6 +1,7 @@
 mod window;
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
@@ -15,6 +16,14 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::*;
 
+struct GlobalState {}
+
+impl GlobalState {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
 fn main() {
     let mut window_options = WindowOptions::new("Mad rust", 1080, 720, Some("./ui/icon.png"));
     window_options.transparent = true;
@@ -23,6 +32,7 @@ fn main() {
 
     let mut window = Window::new(
         window_options,
+        GlobalState::new(),
         Some(ColorF::from(ColorU::new(33, 33, 33, 240))),
         0,
     );
@@ -80,6 +90,7 @@ struct App {
     mouse_position: Option<PhysicalPosition<f64>>,
     over_states: HashSet<AppEvent>,
     new_over_states: HashSet<AppEvent>,
+    global_state: Arc<GlobalState>,
 }
 
 impl App {
@@ -176,8 +187,8 @@ impl App {
             builder,
             &window.api,
             "Device List",
-            ColorF::WHITE,
-            LayoutPoint::new(0., 0.),
+            ColorF::from(ColorU::new(255, 255, 255, 150)),
+            LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
             None,
         );
@@ -253,15 +264,19 @@ impl App {
     }
 }
 
-impl WindowInitTrait for App {
-    fn new(window: &mut window::WindowWrapper) -> Box<dyn WindowTrait> {
+impl WindowInitTrait<GlobalState> for App {
+    fn new(
+        window: &mut window::WindowWrapper,
+        global_state: Arc<GlobalState>,
+    ) -> Box<dyn WindowTrait> {
         Box::new(Self {
-            font: window.load_font("OpenSans", units::Au::from_f32_px(32.0)),
+            font: window.load_font("OpenSans", units::Au::from_f32_px(15.0)),
             do_render: true,
             do_exit: false,
             mouse_position: None,
             over_states: HashSet::new(),
             new_over_states: HashSet::new(),
+            global_state,
         })
     }
 }

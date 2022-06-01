@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gleam::gl;
@@ -244,15 +245,17 @@ impl WindowWrapper {
     }
 }
 
-pub struct Window {
+pub struct Window<T> {
     event_loop: EventLoop<()>,
     pub wrapper: WindowWrapper,
     window: Box<dyn WindowTrait>,
+    global_state: Arc<T>,
 }
 
-impl Window {
+impl<T> Window<T> {
     pub fn new(
         window_options: WindowOptions,
+        global_state: T,
         clear_color: Option<ColorF>,
         document_layer: DocumentLayer,
     ) -> Self {
@@ -332,12 +335,13 @@ impl Window {
                 HashMap::new(),
             ),
             window,
+            global_state: Arc::new(global_state),
         }
     }
 
-    pub fn set_window<T: WindowInitTrait + 'static>(&mut self) {
+    pub fn set_window<U: WindowInitTrait<T> + 'static>(&mut self) {
         self.window.unload();
-        self.window = T::new(&mut self.wrapper);
+        self.window = U::new(&mut self.wrapper, self.global_state.clone());
     }
 
     pub fn run(&mut self) {
@@ -589,8 +593,8 @@ pub enum Event {
     MouseReleased(MouseButton),
 }
 
-pub trait WindowInitTrait: WindowTrait {
-    fn new(window: &mut WindowWrapper) -> Box<dyn WindowTrait>;
+pub trait WindowInitTrait<T>: WindowTrait {
+    fn new(window: &mut WindowWrapper, global_state: Arc<T>) -> Box<dyn WindowTrait>;
 }
 
 pub trait WindowTrait {
