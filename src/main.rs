@@ -43,14 +43,7 @@ fn main() {
     window
         .wrapper
         .load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
-
-    let app = App::new(
-        window
-            .wrapper
-            .load_font("OpenSans", units::Au::from_f32_px(32.0)),
-    );
-
-    window.set_window(app);
+    window.set_window::<App>();
     window.run();
     window.deinit();
 }
@@ -90,17 +83,6 @@ struct App {
 }
 
 impl App {
-    fn new(font: Font) -> Box<Self> {
-        Box::new(Self {
-            font,
-            do_render: true,
-            do_exit: false,
-            mouse_position: None,
-            over_states: HashSet::new(),
-            new_over_states: HashSet::new(),
-        })
-    }
-
     fn update_over_state(&mut self) {
         self.do_render = self.do_render || !self.over_states.is_subset(&self.new_over_states);
         self.over_states = self.new_over_states.clone();
@@ -167,7 +149,12 @@ impl App {
         false
     }
 
-    fn draw_title_bar(&mut self, window_size: PhysicalSize<u32>, frame_builder: &mut FrameBuilder) {
+    fn draw_title_bar(
+        &mut self,
+        window_size: PhysicalSize<u32>,
+        frame_builder: &mut FrameBuilder,
+        window: &mut WindowWrapper,
+    ) {
         let builder = &mut frame_builder.builder;
 
         // title bar
@@ -182,6 +169,17 @@ impl App {
             ColorF::from(ColorU::new(66, 66, 66, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
+        );
+
+        // title
+        self.font.push_text(
+            builder,
+            &window.api,
+            "Device List",
+            ColorF::WHITE,
+            LayoutPoint::new(0., 0.),
+            frame_builder.space_and_clip,
+            None,
         );
 
         // close button
@@ -255,6 +253,19 @@ impl App {
     }
 }
 
+impl WindowInitTrait for App {
+    fn new(window: &mut window::WindowWrapper) -> Box<dyn WindowTrait> {
+        Box::new(Self {
+            font: window.load_font("OpenSans", units::Au::from_f32_px(32.0)),
+            do_render: true,
+            do_exit: false,
+            mouse_position: None,
+            over_states: HashSet::new(),
+            new_over_states: HashSet::new(),
+        })
+    }
+}
+
 impl WindowTrait for App {
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper) {
         match event {
@@ -289,10 +300,14 @@ impl WindowTrait for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        self.draw_title_bar(window_size, frame_builder);
+        self.draw_title_bar(window_size, frame_builder, window);
 
         frame_builder.builder.pop_stacking_context();
 
         self.do_render = false;
+    }
+
+    fn unload(&self) {
+        self.font.unload();
     }
 }

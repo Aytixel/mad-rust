@@ -94,8 +94,8 @@ pub struct WindowWrapper {
     pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
-    pub api: RenderApi,
-    font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
+    pub api: Rc<RenderApi>,
+    font_key_hashmap: HashMap<&'static str, FontKey>,
     device_size: DeviceIntSize,
 }
 
@@ -108,7 +108,7 @@ impl WindowWrapper {
         document_id: DocumentId,
         epoch: Epoch,
         api: RenderApi,
-        font_key_hashmap: HashMap<&'static str, Rc<FontKey>>,
+        font_key_hashmap: HashMap<&'static str, FontKey>,
     ) -> Self {
         let window_size = context.window().inner_size();
 
@@ -119,7 +119,7 @@ impl WindowWrapper {
             pipeline_id,
             document_id,
             epoch,
-            api,
+            api: Rc::new(api),
             font_key_hashmap,
             device_size: DeviceIntSize::new(window_size.width as i32, window_size.height as i32),
         }
@@ -205,7 +205,7 @@ impl WindowWrapper {
         let font_key = self.api.generate_font_key();
         txn.add_raw_font(font_key, load_file(pathname), 0);
 
-        self.font_key_hashmap.insert(name, Rc::new(font_key));
+        self.font_key_hashmap.insert(name, font_key);
         self.api.send_transaction(self.document_id, txn);
     }
 
@@ -216,10 +216,12 @@ impl WindowWrapper {
             self.api.generate_font_instance_key(),
             self.font_key_hashmap[&name].clone(),
             font_size,
+            self.api.clone(),
+            self.document_id,
         );
         txn.add_font_instance(
             font.instance_key,
-            *font.key,
+            font.key,
             font_size,
             None,
             None,
@@ -229,6 +231,16 @@ impl WindowWrapper {
         self.api.send_transaction(self.document_id, txn);
 
         font
+    }
+
+    fn unload_fonts(&self) {
+        let mut txn = Transaction::new();
+
+        for font_key in self.font_key_hashmap.values() {
+            txn.delete_font(*font_key);
+        }
+
+        self.api.send_transaction(self.document_id, txn);
     }
 }
 
@@ -323,8 +335,9 @@ impl Window {
         }
     }
 
-    pub fn set_window(&mut self, window: Box<dyn WindowTrait>) {
-        self.window = window;
+    pub fn set_window<T: WindowInitTrait + 'static>(&mut self) {
+        self.window.unload();
+        self.window = T::new(&mut self.wrapper);
     }
 
     pub fn run(&mut self) {
@@ -393,6 +406,9 @@ impl Window {
 
             timer.wait();
         }
+
+        self.window.unload();
+        self.wrapper.unload_fonts();
     }
 
     fn load_icon(pathname: &'static str) -> Option<Icon> {
@@ -442,16 +458,26 @@ impl FrameBuilder {
 
 pub struct Font {
     pub instance_key: FontInstanceKey,
-    pub key: Rc<FontKey>,
+    pub key: FontKey,
     pub size: Au,
+    api: Rc<RenderApi>,
+    document_id: DocumentId,
 }
 
 impl Font {
-    fn new(font_instance_key: FontInstanceKey, font_key: Rc<FontKey>, font_size: Au) -> Self {
+    fn new(
+        font_instance_key: FontInstanceKey,
+        font_key: FontKey,
+        font_size: Au,
+        api: Rc<RenderApi>,
+        document_id: DocumentId,
+    ) -> Self {
         Self {
             instance_key: font_instance_key,
             key: font_key,
             size: font_size,
+            api,
+            document_id,
         }
     }
 
@@ -472,7 +498,7 @@ impl Font {
             4.0
         };
         let glyph_indices: Vec<u32> = api
-            .get_glyph_indices(*self.key, text)
+            .get_glyph_indices(self.key, text)
             .into_iter()
             .flatten()
             .collect();
@@ -546,6 +572,14 @@ impl Font {
 
         text_bounds
     }
+
+    pub fn unload(&self) {
+        let mut txn = Transaction::new();
+
+        txn.delete_font_instance(self.instance_key);
+
+        self.api.send_transaction(self.document_id, txn);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -553,6 +587,10 @@ pub enum Event {
     MousePosition(PhysicalPosition<f64>),
     MousePressed(MouseButton),
     MouseReleased(MouseButton),
+}
+
+pub trait WindowInitTrait: WindowTrait {
+    fn new(window: &mut WindowWrapper) -> Box<dyn WindowTrait>;
 }
 
 pub trait WindowTrait {
@@ -567,6 +605,8 @@ pub trait WindowTrait {
     }
 
     fn render(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
+
+    fn unload(&self) {}
 }
 
 struct DefaultWindow {}
