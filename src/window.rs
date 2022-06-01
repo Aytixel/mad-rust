@@ -457,12 +457,13 @@ impl Font {
 
     pub fn push_text(
         &self,
-        frame_builder: &mut FrameBuilder,
+        builder: &mut DisplayListBuilder,
         api: &RenderApi,
         text: &'static str,
         color: ColorF,
-        tab_size_option: Option<f32>,
         position: LayoutPoint,
+        space_and_clip: SpaceAndClipInfo,
+        tab_size_option: Option<f32>,
     ) -> LayoutRect {
         let char_iterator: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
@@ -534,8 +535,8 @@ impl Font {
 
         let text_bounds = LayoutRect::new(position, glyph_size.to_vector().to_size());
 
-        frame_builder.builder.push_text(
-            &CommonItemProperties::new(text_bounds, frame_builder.space_and_clip),
+        builder.push_text(
+            &CommonItemProperties::new(text_bounds, space_and_clip),
             text_bounds,
             &glyph_instances,
             self.instance_key,
@@ -555,13 +556,17 @@ pub enum Event {
 }
 
 pub trait WindowTrait {
-    fn on_event(&mut self, event: Event, window: &mut WindowWrapper);
+    fn on_event(&mut self, _event: Event, _window: &mut WindowWrapper) {}
 
-    fn should_exit(&self) -> bool;
+    fn should_exit(&self) -> bool {
+        false
+    }
 
-    fn should_rerender(&self) -> bool;
+    fn should_rerender(&self) -> bool {
+        false
+    }
 
-    fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper);
+    fn render(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
 }
 
 struct DefaultWindow {}
@@ -572,19 +577,7 @@ impl DefaultWindow {
     }
 }
 
-impl WindowTrait for DefaultWindow {
-    fn on_event(&mut self, _: Event, _: &mut WindowWrapper) {}
-
-    fn should_exit(&self) -> bool {
-        false
-    }
-
-    fn should_rerender(&self) -> bool {
-        false
-    }
-
-    fn render(&mut self, _: &mut FrameBuilder, _: &mut WindowWrapper) {}
-}
+impl WindowTrait for DefaultWindow {}
 
 fn load_file(name: &str) -> Vec<u8> {
     let mut file = File::open(name).unwrap();
