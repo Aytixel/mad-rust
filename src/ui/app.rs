@@ -36,7 +36,7 @@ impl AppEvent {
 enum AppEventType {
     MousePressed,
     MouseReleased,
-    MousePosition, // trigger over states
+    UpdateOverState,
 }
 
 pub struct App {
@@ -101,11 +101,10 @@ impl App {
                 }
 
                 // over states processing
-                match event {
-                    AppEvent::CloseButton => self.set_over_state(AppEvent::CloseButton),
-                    AppEvent::MaximizeButton => self.set_over_state(AppEvent::MaximizeButton),
-                    AppEvent::MinimizeButton => self.set_over_state(AppEvent::MinimizeButton),
-                    _ => {}
+                if let AppEvent::CloseButton | AppEvent::MaximizeButton | AppEvent::MinimizeButton =
+                    event
+                {
+                    self.set_over_state(event)
                 }
             }
 
@@ -256,6 +255,9 @@ impl WindowInitTrait<GlobalState> for App {
 impl WindowTrait for App {
     fn on_event(&mut self, event: Event, window: &mut WindowWrapper) {
         match event {
+            Event::Resized(_) | Event::MouseEntered | Event::MouseLeft => {
+                self.calculate_event(window, AppEventType::UpdateOverState);
+            }
             Event::MousePressed(MouseButton::Left) => {
                 self.calculate_event(window, AppEventType::MousePressed);
             }
@@ -263,7 +265,7 @@ impl WindowTrait for App {
                 self.calculate_event(window, AppEventType::MouseReleased);
             }
             Event::MousePosition(position) => {
-                self.calculate_event(window, AppEventType::MousePosition);
+                self.calculate_event(window, AppEventType::UpdateOverState);
                 self.mouse_position = Some(position);
             }
             _ => {}

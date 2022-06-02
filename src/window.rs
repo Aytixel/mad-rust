@@ -27,10 +27,10 @@ use webrender::api::{
     SpaceAndClipInfo,
 };
 use webrender::euclid::Scale;
-use webrender::render_api::{DebugCommand, RenderApi, Transaction};
-use webrender::{DebugFlags, Renderer, RendererOptions};
+use webrender::render_api::{RenderApi, Transaction};
+use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Icon, WindowBuilder};
@@ -91,10 +91,15 @@ impl WindowWrapper {
         pipeline_id: PipelineId,
         document_id: DocumentId,
         epoch: Epoch,
-        api: RenderApi,
+        mut api: RenderApi,
         font_key_hashmap: HashMap<&'static str, FontKey>,
     ) -> Self {
         let window_size = context.window().inner_size();
+
+        let mut txn = Transaction::new();
+
+        txn.set_root_pipeline(pipeline_id);
+        api.send_transaction(document_id, txn);
 
         Self {
             title,
@@ -169,8 +174,7 @@ impl WindowWrapper {
                 frame_builder.layout_size,
                 frame_builder.builder.end(),
             );
-            txn.set_root_pipeline(self.pipeline_id);
-            txn.generate_frame(0, RenderReasons::empty());
+            txn.generate_frame(0, RenderReasons::SCENE);
 
             self.api
                 .borrow_mut()
@@ -340,46 +344,31 @@ impl<T> Window<T> {
 
                     match global_event {
                         winit::event::Event::WindowEvent { event, .. } => match event {
+                            WindowEvent::Resized(size) => {
+                                self.wrapper.redraw(&mut self.window, Some(size));
+                                self.window
+                                    .on_event(Event::Resized(size), &mut self.wrapper)
+                            }
                             WindowEvent::CloseRequested => {
                                 exit = true;
                             }
-                            WindowEvent::Resized(size) => {
-                                self.wrapper.redraw(&mut self.window, Some(size));
-                            }
-                            WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        state: ElementState::Pressed,
-                                        virtual_keycode: Some(key),
-                                        ..
-                                    },
-                                ..
-                            } => match key {
-                                VirtualKeyCode::P => {
-                                    println!("set flags {}", self.wrapper.title);
-                                    self.wrapper.api.borrow().send_debug_cmd(
-                                        DebugCommand::SetFlags(DebugFlags::PROFILER_DBG),
-                                    );
-                                }
-                                _ => {}
-                            },
                             WindowEvent::CursorMoved { position, .. } => self
                                 .window
                                 .on_event(Event::MousePosition(position), &mut self.wrapper),
-                            WindowEvent::MouseInput {
-                                state: ElementState::Pressed,
-                                button,
-                                ..
-                            } => self
-                                .window
-                                .on_event(Event::MousePressed(button), &mut self.wrapper),
-                            WindowEvent::MouseInput {
-                                state: ElementState::Released,
-                                button,
-                                ..
-                            } => self
-                                .window
-                                .on_event(Event::MouseReleased(button), &mut self.wrapper),
+                            WindowEvent::CursorEntered { .. } => {
+                                self.window.on_event(Event::MouseEntered, &mut self.wrapper)
+                            }
+                            WindowEvent::CursorLeft { .. } => {
+                                self.window.on_event(Event::MouseLeft, &mut self.wrapper)
+                            }
+                            WindowEvent::MouseInput { state, button, .. } => match state {
+                                ElementState::Pressed => self
+                                    .window
+                                    .on_event(Event::MousePressed(button), &mut self.wrapper),
+                                ElementState::Released => self
+                                    .window
+                                    .on_event(Event::MouseReleased(button), &mut self.wrapper),
+                            },
                             _ => {}
                         },
                         _ => {}
@@ -420,9 +409,12 @@ impl<T> Window<T> {
 
 #[derive(Clone, Copy)]
 pub enum Event {
+    Resized(PhysicalSize<u32>),
     MousePosition(PhysicalPosition<f64>),
     MousePressed(MouseButton),
     MouseReleased(MouseButton),
+    MouseEntered,
+    MouseLeft,
 }
 
 pub trait WindowInitTrait<T>: WindowTrait {
