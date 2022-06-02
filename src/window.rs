@@ -4,6 +4,7 @@ mod font;
 mod frame_builder;
 mod notifier;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -21,7 +22,12 @@ use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
 use util::time::Timer;
 use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, LayoutRect};
-use webrender::api::*;
+use webrender::api::{
+    ColorF, DisplayListBuilder, DocumentId, Epoch, FontKey, PipelineId, RenderReasons,
+    SpaceAndClipInfo,
+};
+use webrender::euclid::Scale;
+use webrender::render_api::{DebugCommand, RenderApi, Transaction};
 use webrender::{DebugFlags, Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
@@ -72,7 +78,7 @@ pub struct WindowWrapper {
     pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
-    pub api: Rc<RenderApi>,
+    pub api: Rc<RefCell<RenderApi>>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
     device_size: DeviceIntSize,
 }
@@ -97,7 +103,7 @@ impl WindowWrapper {
             pipeline_id,
             document_id,
             epoch,
-            api: Rc::new(api),
+            api: Rc::new(RefCell::new(api)),
             font_key_hashmap,
             device_size: DeviceIntSize::new(window_size.width as i32, window_size.height as i32),
         }
@@ -105,14 +111,16 @@ impl WindowWrapper {
 
     pub fn resize_window(&self, size: PhysicalSize<u32>) {
         self.context.resize(size);
-        self.api.set_document_view(
-            self.document_id,
-            DeviceIntRect::new(
-                DeviceIntPoint::zero(),
-                DeviceIntSize::new(size.width as i32, size.height as i32),
-            ),
-            self.context.window().scale_factor() as f32,
-        );
+        let mut txn = Transaction::new();
+
+        txn.set_document_view(DeviceIntRect::new(
+            DeviceIntPoint::zero(),
+            DeviceIntPoint::new(size.width as i32, size.height as i32),
+        ));
+
+        self.api
+            .borrow_mut()
+            .send_transaction(self.document_id, txn);
     }
 
     pub fn get_window_size(&self) -> PhysicalSize<u32> {
@@ -124,19 +132,15 @@ impl WindowWrapper {
 
         self.device_size = DeviceIntSize::new(window_size.width as i32, window_size.height as i32);
 
-        let layout_size = self.device_size.to_f32()
-            / euclid::Scale::new(self.context.window().scale_factor() as f32);
-        let builder = DisplayListBuilder::new(self.pipeline_id, layout_size);
+        let layout_size =
+            self.device_size.to_f32() / Scale::new(self.context.window().scale_factor() as f32);
+        let mut builder = DisplayListBuilder::new(self.pipeline_id);
         let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
         let bounds = LayoutRect::from_size(layout_size);
 
-        FrameBuilder::new(
-            self.device_size,
-            layout_size,
-            builder,
-            space_and_clip,
-            bounds,
-        )
+        builder.begin();
+
+        FrameBuilder::new(layout_size, builder, space_and_clip, bounds)
     }
 
     fn redraw(
@@ -163,35 +167,39 @@ impl WindowWrapper {
                 self.epoch,
                 None,
                 frame_builder.layout_size,
-                frame_builder.builder.finalize(),
-                true,
+                frame_builder.builder.end(),
             );
             txn.set_root_pipeline(self.pipeline_id);
-            txn.generate_frame();
+            txn.generate_frame(0, RenderReasons::empty());
 
-            self.api.send_transaction(self.document_id, txn);
+            self.api
+                .borrow_mut()
+                .send_transaction(self.document_id, txn);
         }
 
         self.renderer.update();
-        self.renderer.render(self.device_size).unwrap();
+        self.renderer.render(self.device_size, 0).unwrap();
         self.context.swap_buffers().ok();
     }
 
     pub fn load_font_file(&mut self, name: &'static str, pathname: &str) {
         let mut txn = Transaction::new();
 
-        let font_key = self.api.generate_font_key();
+        let font_key = self.api.borrow().generate_font_key();
         txn.add_raw_font(font_key, load_file(pathname), 0);
 
         self.font_key_hashmap.insert(name, font_key);
-        self.api.send_transaction(self.document_id, txn);
+
+        self.api
+            .borrow_mut()
+            .send_transaction(self.document_id, txn);
     }
 
-    pub fn load_font(&self, name: &'static str, font_size: Au) -> Font {
+    pub fn load_font(&mut self, name: &'static str, font_size: Au) -> Font {
         let mut txn = Transaction::new();
 
         let font = Font::new(
-            self.api.generate_font_instance_key(),
+            self.api.borrow().generate_font_instance_key(),
             self.font_key_hashmap[&name].clone(),
             font_size,
             self.api.clone(),
@@ -200,25 +208,29 @@ impl WindowWrapper {
         txn.add_font_instance(
             font.instance_key,
             font.key,
-            font_size,
+            font_size.to_f32_px(),
             None,
             None,
             Vec::new(),
         );
 
-        self.api.send_transaction(self.document_id, txn);
+        self.api
+            .borrow_mut()
+            .send_transaction(self.document_id, txn);
 
         font
     }
 
-    fn unload_fonts(&self) {
+    fn unload_fonts(&mut self) {
         let mut txn = Transaction::new();
 
         for font_key in self.font_key_hashmap.values() {
             txn.delete_font(*font_key);
         }
 
-        self.api.send_transaction(self.document_id, txn);
+        self.api
+            .borrow_mut()
+            .send_transaction(self.document_id, txn);
     }
 }
 
@@ -230,12 +242,7 @@ pub struct Window<T> {
 }
 
 impl<T> Window<T> {
-    pub fn new(
-        window_options: WindowOptions,
-        global_state: T,
-        clear_color: Option<ColorF>,
-        document_layer: DocumentLayer,
-    ) -> Self {
+    pub fn new(window_options: WindowOptions, global_state: T, clear_color: ColorF) -> Self {
         let event_loop = EventLoop::new();
         let window = DefaultWindow::new();
         let mut window_builder = WindowBuilder::new()
@@ -292,9 +299,9 @@ impl<T> Window<T> {
             DeviceIntSize::new(size.width as i32, size.height as i32)
         };
         let notifier = Box::new(Notifier::new(event_loop.create_proxy()));
-        let (renderer, sender) = Renderer::new(gl, notifier, opts, None, device_size).unwrap();
+        let (renderer, sender) = Renderer::new(gl, notifier, opts, None).unwrap();
         let api = sender.create_api();
-        let document_id = api.add_document(device_size, document_layer);
+        let document_id = api.add_document(device_size);
 
         let epoch = Epoch(0);
         let pipeline_id = PipelineId(0, 0);
@@ -350,9 +357,9 @@ impl<T> Window<T> {
                             } => match key {
                                 VirtualKeyCode::P => {
                                     println!("set flags {}", self.wrapper.title);
-                                    self.wrapper.api.send_debug_cmd(DebugCommand::SetFlags(
-                                        DebugFlags::PROFILER_DBG,
-                                    ));
+                                    self.wrapper.api.borrow().send_debug_cmd(
+                                        DebugCommand::SetFlags(DebugFlags::PROFILER_DBG),
+                                    );
                                 }
                                 _ => {}
                             },
@@ -435,7 +442,7 @@ pub trait WindowTrait {
 
     fn render(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
 
-    fn unload(&self) {}
+    fn unload(&mut self) {}
 }
 
 struct DefaultWindow {}

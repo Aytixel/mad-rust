@@ -9,7 +9,7 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, WorldPoint};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, HitTestFlags, PrimitiveFlags,
+    BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, PrimitiveFlags,
 };
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::MouseButton;
@@ -69,11 +69,10 @@ impl App {
         if let Some(mouse_position) = self.mouse_position {
             let hit_items = window
                 .api
+                .borrow()
                 .hit_test(
                     window.document_id,
-                    None,
                     WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
-                    HitTestFlags::FIND_ALL,
                 )
                 .items;
 
@@ -125,23 +124,28 @@ impl App {
         let builder = &mut frame_builder.builder;
 
         // title bar
-        let title_bar_layout_rect = LayoutRect::new(
+        let title_bar_layout_rect = LayoutRect::new_with_size(
             LayoutPoint::new(10.0, 10.0),
             LayoutSize::new(window_size.width as f32 - 20.0, 35.0),
         );
+        let title_bar_common_item_properties =
+            &CommonItemProperties::new(title_bar_layout_rect, frame_builder.space_and_clip);
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(title_bar_layout_rect, frame_builder.space_and_clip)
-                .add_item_tag((AppEvent::TitleBar.into(), 0)),
+            title_bar_common_item_properties,
             ColorF::from(ColorU::new(66, 66, 66, 100)),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
+        );
+        builder.push_hit_test(
+            title_bar_common_item_properties,
+            (AppEvent::TitleBar.into(), 0),
         );
 
         // title
         self.font.push_text(
             builder,
-            &window.api,
+            &window.api.borrow(),
             "Device List",
             ColorF::from(ColorU::new(255, 255, 255, 150)),
             LayoutPoint::new(20.0, 17.0),
@@ -150,14 +154,15 @@ impl App {
         );
 
         // close button
-        let close_button_layout_rect = LayoutRect::new(
+        let close_button_layout_rect = LayoutRect::new_with_size(
             LayoutPoint::new(window_size.width as f32 - 55.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
+        let close_button_common_item_properties =
+            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip);
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip)
-                .add_item_tag((AppEvent::CloseButton.into(), 0)),
+            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
             ColorF::from(ColorU::new(
                 255,
                 79,
@@ -171,16 +176,21 @@ impl App {
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
+        builder.push_hit_test(
+            close_button_common_item_properties,
+            (AppEvent::CloseButton.into(), 0),
+        );
 
         // maximize button
-        let maximize_button_layout_rect = LayoutRect::new(
+        let maximize_button_layout_rect = LayoutRect::new_with_size(
             LayoutPoint::new(window_size.width as f32 - 100.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
+        let maximize_button_common_item_properties =
+            &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip);
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip)
-                .add_item_tag((AppEvent::MaximizeButton.into(), 0)),
+            maximize_button_common_item_properties,
             ColorF::from(ColorU::new(
                 255,
                 189,
@@ -194,16 +204,21 @@ impl App {
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
+        builder.push_hit_test(
+            maximize_button_common_item_properties,
+            (AppEvent::MaximizeButton.into(), 0),
+        );
 
         // minimize button
-        let minimize_button_layout_rect = LayoutRect::new(
+        let minimize_button_layout_rect = LayoutRect::new_with_size(
             LayoutPoint::new(window_size.width as f32 - 145.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
+        let minimize_button_common_item_properties =
+            &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip);
 
         builder.push_rounded_rect(
-            &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip)
-                .add_item_tag((AppEvent::MinimizeButton.into(), 0)),
+            minimize_button_common_item_properties,
             ColorF::from(ColorU::new(
                 50,
                 221,
@@ -216,6 +231,10 @@ impl App {
             )),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
+        );
+        builder.push_hit_test(
+            minimize_button_common_item_properties,
+            (AppEvent::MinimizeButton.into(), 0),
         );
     }
 }
@@ -263,7 +282,7 @@ impl WindowTrait for App {
         let window_size = window.get_window_size();
 
         frame_builder.builder.push_simple_stacking_context(
-            frame_builder.bounds.min(),
+            frame_builder.bounds.min,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
@@ -275,7 +294,7 @@ impl WindowTrait for App {
         self.do_render = false;
     }
 
-    fn unload(&self) {
+    fn unload(&mut self) {
         self.font.unload();
     }
 }

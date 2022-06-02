@@ -1,3 +1,4 @@
+mod animation;
 mod ui;
 mod window;
 
@@ -29,8 +30,7 @@ fn main() {
     let mut window = Window::new(
         window_options,
         GlobalState::new(),
-        Some(ColorF::from(ColorU::new(33, 33, 33, 240))),
-        0,
+        ColorF::from(ColorU::new(33, 33, 33, 240)),
     );
 
     {

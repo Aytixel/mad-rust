@@ -1,16 +1,20 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     ColorF, CommonItemProperties, DisplayListBuilder, DocumentId, FontInstanceKey, FontKey,
-    GlyphInstance, RenderApi, SpaceAndClipInfo, Transaction,
+    GlyphInstance, SpaceAndClipInfo,
 };
+use webrender::render_api::{RenderApi, Transaction};
+
+use super::ext::LayoutRectExt;
 
 pub struct Font {
     pub instance_key: FontInstanceKey,
     pub key: FontKey,
     pub size: Au,
-    api: Rc<RenderApi>,
+    api: Rc<RefCell<RenderApi>>,
     document_id: DocumentId,
 }
 
@@ -19,7 +23,7 @@ impl Font {
         font_instance_key: FontInstanceKey,
         font_key: FontKey,
         font_size: Au,
-        api: Rc<RenderApi>,
+        api: Rc<RefCell<RenderApi>>,
         document_id: DocumentId,
     ) -> Self {
         Self {
@@ -109,7 +113,7 @@ impl Font {
 
         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
 
-        let text_bounds = LayoutRect::new(position, glyph_size.to_vector().to_size());
+        let text_bounds = LayoutRect::new_with_size(position, glyph_size.to_vector().to_size());
 
         builder.push_text(
             &CommonItemProperties::new(text_bounds, space_and_clip),
@@ -123,11 +127,13 @@ impl Font {
         text_bounds
     }
 
-    pub fn unload(&self) {
+    pub fn unload(&mut self) {
         let mut txn = Transaction::new();
 
         txn.delete_font_instance(self.instance_key);
 
-        self.api.send_transaction(self.document_id, txn);
+        self.api
+            .borrow_mut()
+            .send_transaction(self.document_id, txn);
     }
 }

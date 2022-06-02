@@ -1,13 +1,11 @@
-use webrender::api::units::LayoutSize;
+use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     BorderRadius, ClipId, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion,
-    DisplayListBuilder, ItemTag, SpaceAndClipInfo,
+    DisplayListBuilder, SpaceAndClipInfo,
 };
 
 pub trait CommonItemPropertiesExt {
     fn to_space_and_clip_info(&self) -> SpaceAndClipInfo;
-
-    fn add_item_tag(&mut self, item_tag: ItemTag) -> Self;
 }
 
 impl CommonItemPropertiesExt for CommonItemProperties {
@@ -16,11 +14,6 @@ impl CommonItemPropertiesExt for CommonItemProperties {
             spatial_id: self.spatial_id,
             clip_id: self.clip_id,
         }
-    }
-
-    fn add_item_tag(&mut self, item_tag: ItemTag) -> Self {
-        self.hit_info = Some(item_tag);
-        *self
     }
 }
 
@@ -42,18 +35,16 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         radii: BorderRadius,
         mode: ClipMode,
     ) -> ClipId {
-        let clip_id = self.define_clip(
+        let clip_id = self.define_clip_rounded_rect(
             &common.to_space_and_clip_info(),
-            common.clip_rect,
-            [ComplexClipRegion::new(common.clip_rect, radii, mode)],
-            None,
+            ComplexClipRegion::new(common.clip_rect, radii, mode),
         );
 
         let mut common = *common;
 
         common.clip_id = clip_id;
 
-        self.push_rect(&common, color);
+        self.push_rect(&common, common.clip_rect, color);
 
         clip_id
     }
@@ -71,5 +62,15 @@ impl BorderRadiusExt for BorderRadius {
             bottom_left: LayoutSize::new(bottom_left, bottom_left),
             bottom_right: LayoutSize::new(bottom_right, bottom_right),
         }
+    }
+}
+
+pub trait LayoutRectExt {
+    fn new_with_size(position: LayoutPoint, size: LayoutSize) -> LayoutRect;
+}
+
+impl LayoutRectExt for LayoutRect {
+    fn new_with_size(position: LayoutPoint, size: LayoutSize) -> LayoutRect {
+        LayoutRect::new(position, position + size)
     }
 }

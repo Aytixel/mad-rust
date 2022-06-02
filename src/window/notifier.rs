@@ -18,17 +18,11 @@ impl RenderNotifier for Notifier {
         })
     }
 
-    fn wake_up(&self) {
+    fn wake_up(&self, _composite_needed: bool) {
         self.events_proxy.send_event(()).ok();
     }
 
-    fn new_frame_ready(
-        &self,
-        _: DocumentId,
-        _scrolled: bool,
-        _composite_needed: bool,
-        _render_time_ns: Option<u64>,
-    ) {
-        self.wake_up();
+    fn new_frame_ready(&self, _: DocumentId, _scrolled: bool, composite_needed: bool) {
+        self.wake_up(composite_needed);
     }
 }
