@@ -114,8 +114,7 @@ impl WindowWrapper {
         }
     }
 
-    pub fn resize_window(&self, size: PhysicalSize<u32>) {
-        self.context.resize(size);
+    pub fn resize_window(&mut self, size: PhysicalSize<u32>) {
         let mut txn = Transaction::new();
 
         txn.set_document_view(DeviceIntRect::new(
@@ -126,6 +125,7 @@ impl WindowWrapper {
         self.api
             .borrow_mut()
             .send_transaction(self.document_id, txn);
+        self.context.resize(size);
     }
 
     pub fn get_window_size(&self) -> PhysicalSize<u32> {
@@ -148,22 +148,10 @@ impl WindowWrapper {
         FrameBuilder::new(layout_size, builder, space_and_clip, bounds)
     }
 
-    fn redraw(
-        &mut self,
-        window: &mut Box<dyn WindowTrait>,
-        new_window_size: Option<PhysicalSize<u32>>,
-    ) {
-        let mut resized = false;
-
-        if let Some(size) = new_window_size {
-            self.resize_window(size);
-
-            resized = true;
-        }
-
+    fn redraw(&mut self, window: &mut Box<dyn WindowTrait>, force: bool) {
         window.animate(self);
 
-        if window.should_redraw() || resized {
+        if window.should_redraw() || force {
             let mut frame_builder = self.init_frame_builder();
 
             window.redraw(&mut frame_builder, self);
@@ -176,24 +164,11 @@ impl WindowWrapper {
                 frame_builder.layout_size,
                 frame_builder.builder.end(),
             );
-            txn.generate_frame(
-                0,
-                if resized {
-                    RenderReasons::RESIZE
-                } else {
-                    RenderReasons::SCENE
-                },
-            );
+            txn.generate_frame(0, RenderReasons::SCENE);
 
             self.api
                 .borrow_mut()
                 .send_transaction(self.document_id, txn);
-        }
-
-        if window.should_render() || resized {
-            self.renderer.update();
-            self.renderer.render(self.device_size, 0).unwrap();
-            self.context.swap_buffers().ok();
         }
     }
 
@@ -291,9 +266,7 @@ impl<T> Window<T> {
             .with_multisampling(4)
             .build_windowed(window_builder, &event_loop)
             .unwrap();
-
         let context = unsafe { context.make_current().unwrap() };
-
         let gl = match context.get_api() {
             Api::OpenGl => unsafe {
                 gl::GlFns::load_with(|symbol| context.get_proc_address(symbol) as *const _)
@@ -308,7 +281,6 @@ impl<T> Window<T> {
             clear_color,
             ..RendererOptions::default()
         };
-
         let device_size = {
             let size = context.window().inner_size();
             DeviceIntSize::new(size.width as i32, size.height as i32)
@@ -317,7 +289,6 @@ impl<T> Window<T> {
         let (renderer, sender) = Renderer::new(gl, notifier, opts, None).unwrap();
         let api = sender.create_api();
         let document_id = api.add_document(device_size);
-
         let epoch = Epoch(0);
         let pipeline_id = PipelineId(0, 0);
 
@@ -354,11 +325,21 @@ impl<T> Window<T> {
                     *control_flow = ControlFlow::Exit;
 
                     match global_event {
+                        winit::event::Event::UserEvent(()) => {
+                            // render new frame when they are ready
+                            self.wrapper.renderer.update();
+                            self.wrapper
+                                .renderer
+                                .render(self.wrapper.device_size, 0)
+                                .unwrap();
+                            self.wrapper.context.swap_buffers().ok();
+                        }
                         winit::event::Event::WindowEvent { event, .. } => match event {
                             WindowEvent::Resized(size) => {
-                                self.wrapper.redraw(&mut self.window, Some(size));
                                 self.window
-                                    .on_event(Event::Resized(size), &mut self.wrapper)
+                                    .on_event(Event::Resized(size), &mut self.wrapper);
+                                self.wrapper.resize_window(size);
+                                self.wrapper.redraw(&mut self.window, true);
                             }
                             WindowEvent::CloseRequested => {
                                 exit = true;
@@ -390,7 +371,7 @@ impl<T> Window<T> {
                 break;
             }
 
-            self.wrapper.redraw(&mut self.window, None);
+            self.wrapper.redraw(&mut self.window, false);
 
             timer.wait();
         }
@@ -440,10 +421,6 @@ pub trait WindowTrait {
     }
 
     fn should_redraw(&mut self) -> bool {
-        false
-    }
-
-    fn should_render(&mut self) -> bool {
         false
     }
 

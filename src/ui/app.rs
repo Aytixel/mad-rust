@@ -46,7 +46,6 @@ pub struct App {
     font: Font,
     do_exit: bool,
     do_redraw: bool,
-    do_render: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
     over_states: HashSet<AppEvent>,
     global_state: Arc<GlobalState>,
@@ -68,7 +67,7 @@ impl App {
                 )
                 .items;
 
-            self.over_states.clear();
+            let mut new_over_state = HashSet::new();
 
             for (index, hit_item) in hit_items.iter().enumerate() {
                 let event = AppEvent::from(hit_item.tag.0);
@@ -96,65 +95,67 @@ impl App {
                 if let AppEvent::CloseButton | AppEvent::MaximizeButton | AppEvent::MinimizeButton =
                     event
                 {
-                    self.over_states.insert(event);
+                    new_over_state.insert(event);
                 }
             }
 
-            let mut txn = Transaction::new();
+            if self.over_states != new_over_state {
+                let mut txn = Transaction::new();
 
-            txn.reset_dynamic_properties();
-            txn.append_dynamic_properties(DynamicProperties {
-                transforms: vec![],
-                floats: vec![],
-                colors: vec![
-                    PropertyValue {
-                        key: self.close_button_color_key,
-                        value: ColorF::from(ColorU::new(
-                            255,
-                            79,
-                            0,
-                            if self.over_states.contains(&AppEvent::CloseButton) {
-                                150
-                            } else {
-                                100
-                            },
-                        )),
-                    },
-                    PropertyValue {
-                        key: self.maximize_button_color_key,
-                        value: ColorF::from(ColorU::new(
-                            255,
-                            189,
-                            0,
-                            if self.over_states.contains(&AppEvent::MaximizeButton) {
-                                150
-                            } else {
-                                100
-                            },
-                        )),
-                    },
-                    PropertyValue {
-                        key: self.minimize_button_color_key,
-                        value: ColorF::from(ColorU::new(
-                            50,
-                            221,
-                            23,
-                            if self.over_states.contains(&AppEvent::MinimizeButton) {
-                                150
-                            } else {
-                                100
-                            },
-                        )),
-                    },
-                ],
-            });
-            txn.generate_frame(0, RenderReasons::ANIMATED_PROPERTY);
-            window
-                .api
-                .borrow_mut()
-                .send_transaction(window.document_id, txn);
+                txn.reset_dynamic_properties();
+                txn.append_dynamic_properties(DynamicProperties {
+                    transforms: vec![],
+                    floats: vec![],
+                    colors: vec![
+                        PropertyValue {
+                            key: self.close_button_color_key,
+                            value: ColorF::from(ColorU::new(
+                                255,
+                                79,
+                                0,
+                                if new_over_state.contains(&AppEvent::CloseButton) {
+                                    150
+                                } else {
+                                    100
+                                },
+                            )),
+                        },
+                        PropertyValue {
+                            key: self.maximize_button_color_key,
+                            value: ColorF::from(ColorU::new(
+                                255,
+                                189,
+                                0,
+                                if new_over_state.contains(&AppEvent::MaximizeButton) {
+                                    150
+                                } else {
+                                    100
+                                },
+                            )),
+                        },
+                        PropertyValue {
+                            key: self.minimize_button_color_key,
+                            value: ColorF::from(ColorU::new(
+                                50,
+                                221,
+                                23,
+                                if new_over_state.contains(&AppEvent::MinimizeButton) {
+                                    150
+                                } else {
+                                    100
+                                },
+                            )),
+                        },
+                    ],
+                });
+                txn.generate_frame(0, RenderReasons::ANIMATED_PROPERTY);
+                window
+                    .api
+                    .borrow_mut()
+                    .send_transaction(window.document_id, txn);
+            }
 
-            self.do_render = true;
+            self.over_states = new_over_state;
         }
     }
 
@@ -270,13 +271,12 @@ impl WindowInitTrait<GlobalState> for App {
             font: window.load_font("OpenSans", Au::from_f32_px(15.0)),
             do_exit: false,
             do_redraw: true,
-            do_render: true,
             mouse_position: None,
             over_states: HashSet::new(),
             global_state,
-            close_button_color_key: PropertyBindingKey::new(0),
-            maximize_button_color_key: PropertyBindingKey::new(1),
-            minimize_button_color_key: PropertyBindingKey::new(2),
+            close_button_color_key: window.api.borrow().generate_property_binding_key(),
+            maximize_button_color_key: window.api.borrow().generate_property_binding_key(),
+            minimize_button_color_key: window.api.borrow().generate_property_binding_key(),
         })
     }
 }
@@ -309,14 +309,6 @@ impl WindowTrait for App {
         let value = self.do_redraw;
 
         self.do_redraw = false;
-
-        value
-    }
-
-    fn should_render(&mut self) -> bool {
-        let value = self.do_render;
-
-        self.do_render = false;
 
         value
     }
