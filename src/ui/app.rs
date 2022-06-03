@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::vec;
 
 use crate::window::ext::*;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
@@ -9,8 +10,10 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, WorldPoint};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, PrimitiveFlags,
+    BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, DynamicProperties,
+    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue, RenderReasons,
 };
+use webrender::Transaction;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::MouseButton;
 
@@ -45,27 +48,15 @@ pub struct App {
     do_exit: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
     over_states: HashSet<AppEvent>,
-    new_over_states: HashSet<AppEvent>,
     global_state: Arc<GlobalState>,
+
+    close_button_color_key: PropertyBindingKey<ColorF>,
+    maximize_button_color_key: PropertyBindingKey<ColorF>,
+    minimize_button_color_key: PropertyBindingKey<ColorF>,
 }
 
 impl App {
-    fn update_over_state(&mut self) {
-        self.do_render = self.do_render || !self.over_states.is_subset(&self.new_over_states);
-        self.over_states = self.new_over_states.clone();
-        self.new_over_states.clear();
-    }
-
-    fn set_over_state(&mut self, event: AppEvent) {
-        self.do_render = true;
-        self.new_over_states.insert(event);
-    }
-
-    fn calculate_event(
-        &mut self,
-        window: &mut WindowWrapper,
-        target_event_type: AppEventType,
-    ) -> bool {
+    fn calculate_event(&mut self, window: &mut WindowWrapper, target_event_type: AppEventType) {
         if let Some(mouse_position) = self.mouse_position {
             let hit_items = window
                 .api
@@ -76,7 +67,7 @@ impl App {
                 )
                 .items;
 
-            self.update_over_state();
+            self.over_states.clear();
 
             for (index, hit_item) in hit_items.iter().enumerate() {
                 let event = AppEvent::from(hit_item.tag.0);
@@ -104,14 +95,64 @@ impl App {
                 if let AppEvent::CloseButton | AppEvent::MaximizeButton | AppEvent::MinimizeButton =
                     event
                 {
-                    self.set_over_state(event)
+                    self.over_states.insert(event);
                 }
             }
 
-            return hit_items.len() > 0;
-        }
+            let mut txn = Transaction::new();
 
-        false
+            txn.reset_dynamic_properties();
+            txn.append_dynamic_properties(DynamicProperties {
+                transforms: vec![],
+                floats: vec![],
+                colors: vec![
+                    PropertyValue {
+                        key: self.close_button_color_key,
+                        value: ColorF::from(ColorU::new(
+                            255,
+                            79,
+                            0,
+                            if self.over_states.contains(&AppEvent::CloseButton) {
+                                150
+                            } else {
+                                100
+                            },
+                        )),
+                    },
+                    PropertyValue {
+                        key: self.maximize_button_color_key,
+                        value: ColorF::from(ColorU::new(
+                            255,
+                            189,
+                            0,
+                            if self.over_states.contains(&AppEvent::MaximizeButton) {
+                                150
+                            } else {
+                                100
+                            },
+                        )),
+                    },
+                    PropertyValue {
+                        key: self.minimize_button_color_key,
+                        value: ColorF::from(ColorU::new(
+                            50,
+                            221,
+                            23,
+                            if self.over_states.contains(&AppEvent::MinimizeButton) {
+                                150
+                            } else {
+                                100
+                            },
+                        )),
+                    },
+                ],
+            });
+            txn.generate_frame(0, RenderReasons::empty());
+            window
+                .api
+                .borrow_mut()
+                .send_transaction(window.document_id, txn);
+        }
     }
 
     fn draw_title_bar(
@@ -146,7 +187,7 @@ impl App {
             builder,
             &window.api.borrow(),
             "Device List",
-            ColorF::from(ColorU::new(255, 255, 255, 150)),
+            ColorF::from(ColorU::new(255, 255, 255, 100)),
             LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
             None,
@@ -160,18 +201,12 @@ impl App {
         let close_button_common_item_properties =
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip);
 
-        builder.push_rounded_rect(
+        builder.push_rounded_rect_with_animation(
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
-            ColorF::from(ColorU::new(
-                255,
-                79,
-                0,
-                if self.over_states.contains(&AppEvent::CloseButton) {
-                    150
-                } else {
-                    100
-                },
-            )),
+            PropertyBinding::Binding(
+                self.close_button_color_key,
+                ColorF::from(ColorU::new(255, 79, 0, 100)),
+            ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -188,18 +223,12 @@ impl App {
         let maximize_button_common_item_properties =
             &CommonItemProperties::new(maximize_button_layout_rect, frame_builder.space_and_clip);
 
-        builder.push_rounded_rect(
+        builder.push_rounded_rect_with_animation(
             maximize_button_common_item_properties,
-            ColorF::from(ColorU::new(
-                255,
-                189,
-                0,
-                if self.over_states.contains(&AppEvent::MaximizeButton) {
-                    150
-                } else {
-                    100
-                },
-            )),
+            PropertyBinding::Binding(
+                self.maximize_button_color_key,
+                ColorF::from(ColorU::new(255, 189, 0, 100)),
+            ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -216,18 +245,12 @@ impl App {
         let minimize_button_common_item_properties =
             &CommonItemProperties::new(minimize_button_layout_rect, frame_builder.space_and_clip);
 
-        builder.push_rounded_rect(
+        builder.push_rounded_rect_with_animation(
             minimize_button_common_item_properties,
-            ColorF::from(ColorU::new(
-                50,
-                221,
-                23,
-                if self.over_states.contains(&AppEvent::MinimizeButton) {
-                    150
-                } else {
-                    100
-                },
-            )),
+            PropertyBinding::Binding(
+                self.minimize_button_color_key,
+                ColorF::from(ColorU::new(50, 221, 23, 150)),
+            ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -246,8 +269,10 @@ impl WindowInitTrait<GlobalState> for App {
             do_exit: false,
             mouse_position: None,
             over_states: HashSet::new(),
-            new_over_states: HashSet::new(),
             global_state,
+            close_button_color_key: PropertyBindingKey::new(0),
+            maximize_button_color_key: PropertyBindingKey::new(1),
+            minimize_button_color_key: PropertyBindingKey::new(2),
         })
     }
 }

@@ -1,7 +1,7 @@
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     BorderRadius, ClipId, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion,
-    DisplayListBuilder, SpaceAndClipInfo,
+    DisplayListBuilder, PropertyBinding, SpaceAndClipInfo,
 };
 
 pub trait CommonItemPropertiesExt {
@@ -25,6 +25,14 @@ pub trait DisplayListBuilderExt {
         radii: BorderRadius,
         mode: ClipMode,
     ) -> ClipId;
+
+    fn push_rounded_rect_with_animation(
+        &mut self,
+        common: &CommonItemProperties,
+        color: PropertyBinding<ColorF>,
+        radii: BorderRadius,
+        mode: ClipMode,
+    ) -> ClipId;
 }
 
 impl DisplayListBuilderExt for DisplayListBuilder {
@@ -45,6 +53,27 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         common.clip_id = clip_id;
 
         self.push_rect(&common, common.clip_rect, color);
+
+        clip_id
+    }
+
+    fn push_rounded_rect_with_animation(
+        &mut self,
+        common: &CommonItemProperties,
+        color: PropertyBinding<ColorF>,
+        radii: BorderRadius,
+        mode: ClipMode,
+    ) -> ClipId {
+        let clip_id = self.define_clip_rounded_rect(
+            &common.to_space_and_clip_info(),
+            ComplexClipRegion::new(common.clip_rect, radii, mode),
+        );
+
+        let mut common = *common;
+
+        common.clip_id = clip_id;
+
+        self.push_rect_with_animation(&common, common.clip_rect, color);
 
         clip_id
     }
