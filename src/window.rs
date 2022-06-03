@@ -129,22 +129,31 @@ impl WindowWrapper {
     }
 
     fn redraw(&mut self, window: &mut Box<dyn WindowTrait>, force: bool) {
-        window.animate(self);
+        let mut txn = Transaction::new();
+
+        window.animate(&mut txn);
 
         if window.should_redraw() || force {
             let mut frame_builder = FrameBuilder::new(self);
 
             window.redraw(&mut frame_builder, self);
-
-            let mut txn = Transaction::new();
-
             txn.set_display_list(
                 self.epoch,
                 None,
                 frame_builder.layout_size,
                 frame_builder.builder.end(),
             );
-            txn.generate_frame(0, RenderReasons::SCENE);
+        }
+
+        if !txn.is_empty() {
+            txn.generate_frame(
+                0,
+                if window.should_redraw() || force {
+                    RenderReasons::SCENE
+                } else {
+                    RenderReasons::ANIMATED_PROPERTY
+                },
+            );
 
             self.api
                 .borrow_mut()
@@ -404,7 +413,7 @@ pub trait WindowTrait {
         false
     }
 
-    fn animate(&mut self, _window: &mut WindowWrapper) {}
+    fn animate(&mut self, _txn: &mut Transaction) {}
 
     fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
 

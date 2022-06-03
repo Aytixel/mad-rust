@@ -313,7 +313,7 @@ impl WindowTrait for App {
         value
     }
 
-    fn animate(&mut self, _window: &mut WindowWrapper) {}
+    fn animate(&mut self, _txn: &mut Transaction) {}
 
     fn redraw(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper) {
         let window_size = window.get_window_size();
