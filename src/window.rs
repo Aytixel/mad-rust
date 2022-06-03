@@ -110,7 +110,7 @@ impl WindowWrapper {
         }
     }
 
-    pub fn resize_window(&mut self, size: PhysicalSize<u32>) {
+    pub fn update_window_size(&mut self, size: PhysicalSize<u32>) {
         let mut txn = Transaction::new();
 
         txn.set_document_view(DeviceIntRect::new(
@@ -327,7 +327,7 @@ impl<T> Window<T> {
                             WindowEvent::Resized(size) => {
                                 self.window
                                     .on_event(Event::Resized(size), &mut self.wrapper);
-                                self.wrapper.resize_window(size);
+                                self.wrapper.update_window_size(size);
                                 self.wrapper.redraw(&mut self.window, true);
                             }
                             WindowEvent::CloseRequested => {
@@ -399,11 +399,11 @@ pub enum Event {
 }
 
 pub trait WindowInitTrait<T>: WindowTrait {
-    fn new(window: &mut WindowWrapper, global_state: Arc<T>) -> Box<dyn WindowTrait>;
+    fn new(wrapper: &mut WindowWrapper, global_state: Arc<T>) -> Box<dyn WindowTrait>;
 }
 
 pub trait WindowTrait {
-    fn on_event(&mut self, _event: Event, _window: &mut WindowWrapper) {}
+    fn on_event(&mut self, _event: Event, _wrapper: &mut WindowWrapper) {}
 
     fn should_exit(&self) -> bool {
         false
@@ -415,7 +415,7 @@ pub trait WindowTrait {
 
     fn animate(&mut self, _txn: &mut Transaction) {}
 
-    fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
+    fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper) {}
 
     fn unload(&mut self) {}
 }

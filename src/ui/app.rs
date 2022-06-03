@@ -56,13 +56,13 @@ pub struct App {
 }
 
 impl App {
-    fn calculate_event(&mut self, window: &mut WindowWrapper, target_event_type: AppEventType) {
+    fn calculate_event(&mut self, wrapper: &mut WindowWrapper, target_event_type: AppEventType) {
         if let Some(mouse_position) = self.mouse_position {
-            let hit_items = window
+            let hit_items = wrapper
                 .api
                 .borrow()
                 .hit_test(
-                    window.document_id,
+                    wrapper.document_id,
                     WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
                 )
                 .items;
@@ -75,16 +75,18 @@ impl App {
                 if index == 0 {
                     match target_event_type {
                         AppEventType::MousePressed => match event {
-                            AppEvent::TitleBar => window.context.window().drag_window().unwrap(),
+                            AppEvent::TitleBar => wrapper.context.window().drag_window().unwrap(),
                             _ => {}
                         },
                         AppEventType::MouseReleased => match event {
                             AppEvent::CloseButton => self.do_exit = true,
-                            AppEvent::MaximizeButton => window
+                            AppEvent::MaximizeButton => wrapper
                                 .context
                                 .window()
-                                .set_maximized(!window.context.window().is_maximized()),
-                            AppEvent::MinimizeButton => window.context.window().set_minimized(true),
+                                .set_maximized(!wrapper.context.window().is_maximized()),
+                            AppEvent::MinimizeButton => {
+                                wrapper.context.window().set_minimized(true)
+                            }
                             _ => {}
                         },
                         _ => {}
@@ -149,10 +151,10 @@ impl App {
                     ],
                 });
                 txn.generate_frame(0, RenderReasons::ANIMATED_PROPERTY);
-                window
+                wrapper
                     .api
                     .borrow_mut()
-                    .send_transaction(window.document_id, txn);
+                    .send_transaction(wrapper.document_id, txn);
             }
 
             self.over_states = new_over_state;
@@ -163,7 +165,7 @@ impl App {
         &mut self,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
-        window: &mut WindowWrapper,
+        wrapper: &mut WindowWrapper,
     ) {
         let builder = &mut frame_builder.builder;
 
@@ -189,7 +191,7 @@ impl App {
         // title
         self.font.push_text(
             builder,
-            &window.api.borrow(),
+            &wrapper.api.borrow(),
             "Device List",
             ColorF::from(ColorU::new(255, 255, 255, 100)),
             LayoutPoint::new(20.0, 17.0),
@@ -266,35 +268,35 @@ impl App {
 }
 
 impl WindowInitTrait<GlobalState> for App {
-    fn new(window: &mut WindowWrapper, global_state: Arc<GlobalState>) -> Box<dyn WindowTrait> {
+    fn new(wrapper: &mut WindowWrapper, global_state: Arc<GlobalState>) -> Box<dyn WindowTrait> {
         Box::new(Self {
-            font: window.load_font("OpenSans", Au::from_f32_px(15.0)),
+            font: wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
             do_exit: false,
             do_redraw: true,
             mouse_position: None,
             over_states: HashSet::new(),
             global_state,
-            close_button_color_key: window.api.borrow().generate_property_binding_key(),
-            maximize_button_color_key: window.api.borrow().generate_property_binding_key(),
-            minimize_button_color_key: window.api.borrow().generate_property_binding_key(),
+            close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
+            maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
+            minimize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
         })
     }
 }
 
 impl WindowTrait for App {
-    fn on_event(&mut self, event: Event, window: &mut WindowWrapper) {
+    fn on_event(&mut self, event: Event, wrapper: &mut WindowWrapper) {
         match event {
             Event::Resized(_) | Event::MouseEntered | Event::MouseLeft => {
-                self.calculate_event(window, AppEventType::UpdateOverState);
+                self.calculate_event(wrapper, AppEventType::UpdateOverState);
             }
             Event::MousePressed(MouseButton::Left) => {
-                self.calculate_event(window, AppEventType::MousePressed);
+                self.calculate_event(wrapper, AppEventType::MousePressed);
             }
             Event::MouseReleased(MouseButton::Left) => {
-                self.calculate_event(window, AppEventType::MouseReleased);
+                self.calculate_event(wrapper, AppEventType::MouseReleased);
             }
             Event::MousePosition(position) => {
-                self.calculate_event(window, AppEventType::UpdateOverState);
+                self.calculate_event(wrapper, AppEventType::UpdateOverState);
                 self.mouse_position = Some(position);
             }
             _ => {}
@@ -315,8 +317,8 @@ impl WindowTrait for App {
 
     fn animate(&mut self, _txn: &mut Transaction) {}
 
-    fn redraw(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper) {
-        let window_size = window.get_window_size();
+    fn redraw(&mut self, frame_builder: &mut FrameBuilder, wrapper: &mut WindowWrapper) {
+        let window_size = wrapper.get_window_size();
 
         frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min,
@@ -324,7 +326,7 @@ impl WindowTrait for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        self.draw_title_bar(window_size, frame_builder, window);
+        self.draw_title_bar(window_size, frame_builder, wrapper);
 
         frame_builder.builder.pop_stacking_context();
     }
