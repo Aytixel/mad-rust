@@ -21,12 +21,8 @@ use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
 use util::time::Timer;
-use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, LayoutRect};
-use webrender::api::{
-    ColorF, DisplayListBuilder, DocumentId, Epoch, FontKey, PipelineId, RenderReasons,
-    SpaceAndClipInfo,
-};
-use webrender::euclid::Scale;
+use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize};
+use webrender::api::{ColorF, DocumentId, Epoch, FontKey, PipelineId, RenderReasons};
 use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -132,27 +128,11 @@ impl WindowWrapper {
         self.context.window().inner_size()
     }
 
-    fn init_frame_builder(&mut self) -> FrameBuilder {
-        let window_size = self.get_window_size();
-
-        self.device_size = DeviceIntSize::new(window_size.width as i32, window_size.height as i32);
-
-        let layout_size =
-            self.device_size.to_f32() / Scale::new(self.context.window().scale_factor() as f32);
-        let mut builder = DisplayListBuilder::new(self.pipeline_id);
-        let space_and_clip = SpaceAndClipInfo::root_scroll(self.pipeline_id);
-        let bounds = LayoutRect::from_size(layout_size);
-
-        builder.begin();
-
-        FrameBuilder::new(layout_size, builder, space_and_clip, bounds)
-    }
-
     fn redraw(&mut self, window: &mut Box<dyn WindowTrait>, force: bool) {
         window.animate(self);
 
         if window.should_redraw() || force {
-            let mut frame_builder = self.init_frame_builder();
+            let mut frame_builder = FrameBuilder::new(self);
 
             window.redraw(&mut frame_builder, self);
 
