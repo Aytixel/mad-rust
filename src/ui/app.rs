@@ -249,7 +249,7 @@ impl App {
             minimize_button_common_item_properties,
             PropertyBinding::Binding(
                 self.minimize_button_color_key,
-                ColorF::from(ColorU::new(50, 221, 23, 150)),
+                ColorF::from(ColorU::new(50, 221, 23, 100)),
             ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
