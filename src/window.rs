@@ -176,7 +176,14 @@ impl WindowWrapper {
                 frame_builder.layout_size,
                 frame_builder.builder.end(),
             );
-            txn.generate_frame(0, RenderReasons::SCENE);
+            txn.generate_frame(
+                0,
+                if resized {
+                    RenderReasons::RESIZE
+                } else {
+                    RenderReasons::SCENE
+                },
+            );
 
             self.api
                 .borrow_mut()
