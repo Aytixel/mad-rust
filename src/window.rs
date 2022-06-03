@@ -161,10 +161,12 @@ impl WindowWrapper {
             resized = true;
         }
 
-        if window.should_rerender() || resized {
+        window.animate(self);
+
+        if window.should_redraw() || resized {
             let mut frame_builder = self.init_frame_builder();
 
-            window.render(&mut frame_builder, self);
+            window.redraw(&mut frame_builder, self);
 
             let mut txn = Transaction::new();
 
@@ -181,9 +183,11 @@ impl WindowWrapper {
                 .send_transaction(self.document_id, txn);
         }
 
-        self.renderer.update();
-        self.renderer.render(self.device_size, 0).unwrap();
-        self.context.swap_buffers().ok();
+        if window.should_render() || resized {
+            self.renderer.update();
+            self.renderer.render(self.device_size, 0).unwrap();
+            self.context.swap_buffers().ok();
+        }
     }
 
     pub fn load_font_file(&mut self, name: &'static str, pathname: &str) {
@@ -428,11 +432,17 @@ pub trait WindowTrait {
         false
     }
 
-    fn should_rerender(&self) -> bool {
+    fn should_redraw(&mut self) -> bool {
         false
     }
 
-    fn render(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
+    fn should_render(&mut self) -> bool {
+        false
+    }
+
+    fn animate(&mut self, _window: &mut WindowWrapper) {}
+
+    fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _window: &mut WindowWrapper) {}
 
     fn unload(&mut self) {}
 }

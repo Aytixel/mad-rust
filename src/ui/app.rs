@@ -44,8 +44,9 @@ enum AppEventType {
 
 pub struct App {
     font: Font,
-    do_render: bool,
     do_exit: bool,
+    do_redraw: bool,
+    do_render: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
     over_states: HashSet<AppEvent>,
     global_state: Arc<GlobalState>,
@@ -152,6 +153,8 @@ impl App {
                 .api
                 .borrow_mut()
                 .send_transaction(window.document_id, txn);
+
+            self.do_render = true;
         }
     }
 
@@ -265,8 +268,9 @@ impl WindowInitTrait<GlobalState> for App {
     fn new(window: &mut WindowWrapper, global_state: Arc<GlobalState>) -> Box<dyn WindowTrait> {
         Box::new(Self {
             font: window.load_font("OpenSans", Au::from_f32_px(15.0)),
-            do_render: true,
             do_exit: false,
+            do_redraw: true,
+            do_render: true,
             mouse_position: None,
             over_states: HashSet::new(),
             global_state,
@@ -301,11 +305,25 @@ impl WindowTrait for App {
         self.do_exit
     }
 
-    fn should_rerender(&self) -> bool {
-        self.do_render
+    fn should_redraw(&mut self) -> bool {
+        let value = self.do_redraw;
+
+        self.do_redraw = false;
+
+        value
     }
 
-    fn render(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper) {
+    fn should_render(&mut self) -> bool {
+        let value = self.do_render;
+
+        self.do_render = false;
+
+        value
+    }
+
+    fn animate(&mut self, _window: &mut WindowWrapper) {}
+
+    fn redraw(&mut self, frame_builder: &mut FrameBuilder, window: &mut WindowWrapper) {
         let window_size = window.get_window_size();
 
         frame_builder.builder.push_simple_stacking_context(
@@ -317,8 +335,6 @@ impl WindowTrait for App {
         self.draw_title_bar(window_size, frame_builder, window);
 
         frame_builder.builder.pop_stacking_context();
-
-        self.do_render = false;
     }
 
     fn unload(&mut self) {
