@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
 
-use crate::animation::Animation;
+use crate::animation::{Animation, AnimationCurve};
 use crate::window::ext::*;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
 use crate::GlobalState;
@@ -113,6 +113,11 @@ impl App {
                         ColorF::new_u(255, 79, 0, 100)
                     },
                     Duration::from_millis(100),
+                    if new_over_state.contains(&AppEvent::CloseButton) {
+                        AnimationCurve::EASE_OUT
+                    } else {
+                        AnimationCurve::EASE_IN
+                    },
                 );
                 self.maximize_button_color_animation.to(
                     if new_over_state.contains(&AppEvent::MaximizeButton) {
@@ -121,6 +126,11 @@ impl App {
                         ColorF::new_u(255, 189, 0, 100)
                     },
                     Duration::from_millis(100),
+                    if new_over_state.contains(&AppEvent::MaximizeButton) {
+                        AnimationCurve::EASE_OUT
+                    } else {
+                        AnimationCurve::EASE_IN
+                    },
                 );
                 self.minimize_button_color_animation.to(
                     if new_over_state.contains(&AppEvent::MinimizeButton) {
@@ -129,6 +139,11 @@ impl App {
                         ColorF::new_u(50, 221, 23, 100)
                     },
                     Duration::from_millis(100),
+                    if new_over_state.contains(&AppEvent::MinimizeButton) {
+                        AnimationCurve::EASE_OUT
+                    } else {
+                        AnimationCurve::EASE_IN
+                    },
                 );
             }
 
