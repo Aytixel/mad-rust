@@ -4,6 +4,20 @@ use webrender::api::{
     DisplayListBuilder, PropertyBinding, SpaceAndClipInfo,
 };
 
+pub trait ColorFTrait {
+    fn new_u(r: u8, g: u8, b: u8, a: u8) -> ColorF;
+}
+
+impl ColorFTrait for ColorF {
+    fn new_u(r: u8, g: u8, b: u8, a: u8) -> ColorF {
+        ColorF::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            a as f32 / 255.0,
+        )
+    }
+}
 pub trait CommonItemPropertiesExt {
     fn to_space_and_clip_info(&self) -> SpaceAndClipInfo;
 }

@@ -175,29 +175,12 @@ impl WindowWrapper {
     }
 
     pub fn load_font(&mut self, name: &'static str, font_size: Au) -> Font {
-        let mut txn = Transaction::new();
-
-        let font = Font::new(
-            self.api.borrow().generate_font_instance_key(),
+        Font::new(
             self.font_key_hashmap[&name].clone(),
             font_size,
             self.api.clone(),
             self.document_id,
-        );
-        txn.add_font_instance(
-            font.instance_key,
-            font.key,
-            font_size.to_f32_px(),
-            None,
-            None,
-            Vec::new(),
-        );
-
-        self.api
-            .borrow_mut()
-            .send_transaction(self.document_id, txn);
-
-        font
+        )
     }
 
     fn unload_fonts(&mut self) {

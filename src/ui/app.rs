@@ -12,8 +12,8 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, WorldPoint};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, DynamicProperties,
-    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue,
+    BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, PrimitiveFlags,
+    PropertyBinding, PropertyBindingKey, PropertyValue,
 };
 use webrender::Transaction;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -107,42 +107,27 @@ impl App {
 
             if self.over_states != new_over_state {
                 self.close_button_color_animation.to(
-                    ColorF::from(ColorU::new(
-                        255,
-                        79,
-                        0,
-                        if new_over_state.contains(&AppEvent::CloseButton) {
-                            150
-                        } else {
-                            100
-                        },
-                    )),
+                    if new_over_state.contains(&AppEvent::CloseButton) {
+                        ColorF::new_u(255, 79, 0, 150)
+                    } else {
+                        ColorF::new_u(255, 79, 0, 100)
+                    },
                     Duration::from_millis(100),
                 );
                 self.maximize_button_color_animation.to(
-                    ColorF::from(ColorU::new(
-                        255,
-                        189,
-                        0,
-                        if new_over_state.contains(&AppEvent::MaximizeButton) {
-                            150
-                        } else {
-                            100
-                        },
-                    )),
+                    if new_over_state.contains(&AppEvent::MaximizeButton) {
+                        ColorF::new_u(255, 189, 0, 150)
+                    } else {
+                        ColorF::new_u(255, 189, 0, 100)
+                    },
                     Duration::from_millis(100),
                 );
                 self.minimize_button_color_animation.to(
-                    ColorF::from(ColorU::new(
-                        50,
-                        221,
-                        23,
-                        if new_over_state.contains(&AppEvent::MinimizeButton) {
-                            150
-                        } else {
-                            100
-                        },
-                    )),
+                    if new_over_state.contains(&AppEvent::MinimizeButton) {
+                        ColorF::new_u(50, 221, 23, 150)
+                    } else {
+                        ColorF::new_u(50, 221, 23, 100)
+                    },
                     Duration::from_millis(100),
                 );
             }
@@ -169,7 +154,7 @@ impl App {
 
         builder.push_rounded_rect(
             title_bar_common_item_properties,
-            ColorF::from(ColorU::new(66, 66, 66, 100)),
+            ColorF::new_u(66, 66, 66, 100),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
         );
@@ -183,7 +168,7 @@ impl App {
             builder,
             &wrapper.api.borrow(),
             "Device List",
-            ColorF::from(ColorU::new(255, 255, 255, 100)),
+            ColorF::new_u(255, 255, 255, 100),
             LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
             None,
@@ -274,15 +259,15 @@ impl WindowInitTrait<GlobalState> for App {
             maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             minimize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             close_button_color_animation: Animation::new(
-                ColorF::from(ColorU::new(255, 79, 0, 100)),
+                ColorF::new_u(255, 79, 0, 100),
                 over_color_animation,
             ),
             maximize_button_color_animation: Animation::new(
-                ColorF::from(ColorU::new(255, 189, 0, 100)),
+                ColorF::new_u(255, 189, 0, 100),
                 over_color_animation,
             ),
             minimize_button_color_animation: Animation::new(
-                ColorF::from(ColorU::new(50, 221, 23, 100)),
+                ColorF::new_u(50, 221, 23, 100),
                 over_color_animation,
             ),
         })

@@ -20,12 +20,24 @@ pub struct Font {
 
 impl Font {
     pub fn new(
-        font_instance_key: FontInstanceKey,
         font_key: FontKey,
         font_size: Au,
         api: Rc<RefCell<RenderApi>>,
         document_id: DocumentId,
     ) -> Self {
+        let font_instance_key = api.borrow().generate_font_instance_key();
+        let mut txn = Transaction::new();
+
+        txn.add_font_instance(
+            font_instance_key,
+            font_key,
+            font_size.to_f32_px(),
+            None,
+            None,
+            Vec::new(),
+        );
+        api.borrow_mut().send_transaction(document_id, txn);
+
         Self {
             instance_key: font_instance_key,
             key: font_key,
