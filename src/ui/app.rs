@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 use std::vec;
 
+use crate::animation::Animation;
 use crate::window::ext::*;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
 use crate::GlobalState;
@@ -11,7 +13,7 @@ use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, WorldPoint};
 use webrender::api::{
     BorderRadius, ClipMode, ColorF, ColorU, CommonItemProperties, DynamicProperties,
-    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue, RenderReasons,
+    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue,
 };
 use webrender::Transaction;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -49,10 +51,12 @@ pub struct App {
     mouse_position: Option<PhysicalPosition<f64>>,
     over_states: HashSet<AppEvent>,
     global_state: Arc<GlobalState>,
-
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
     minimize_button_color_key: PropertyBindingKey<ColorF>,
+    close_button_color_animation: Animation<ColorF>,
+    maximize_button_color_animation: Animation<ColorF>,
+    minimize_button_color_animation: Animation<ColorF>,
 }
 
 impl App {
@@ -102,59 +106,45 @@ impl App {
             }
 
             if self.over_states != new_over_state {
-                let mut txn = Transaction::new();
-
-                txn.reset_dynamic_properties();
-                txn.append_dynamic_properties(DynamicProperties {
-                    transforms: vec![],
-                    floats: vec![],
-                    colors: vec![
-                        PropertyValue {
-                            key: self.close_button_color_key,
-                            value: ColorF::from(ColorU::new(
-                                255,
-                                79,
-                                0,
-                                if new_over_state.contains(&AppEvent::CloseButton) {
-                                    150
-                                } else {
-                                    100
-                                },
-                            )),
+                self.close_button_color_animation.to(
+                    ColorF::from(ColorU::new(
+                        255,
+                        79,
+                        0,
+                        if new_over_state.contains(&AppEvent::CloseButton) {
+                            150
+                        } else {
+                            100
                         },
-                        PropertyValue {
-                            key: self.maximize_button_color_key,
-                            value: ColorF::from(ColorU::new(
-                                255,
-                                189,
-                                0,
-                                if new_over_state.contains(&AppEvent::MaximizeButton) {
-                                    150
-                                } else {
-                                    100
-                                },
-                            )),
+                    )),
+                    Duration::from_millis(100),
+                );
+                self.maximize_button_color_animation.to(
+                    ColorF::from(ColorU::new(
+                        255,
+                        189,
+                        0,
+                        if new_over_state.contains(&AppEvent::MaximizeButton) {
+                            150
+                        } else {
+                            100
                         },
-                        PropertyValue {
-                            key: self.minimize_button_color_key,
-                            value: ColorF::from(ColorU::new(
-                                50,
-                                221,
-                                23,
-                                if new_over_state.contains(&AppEvent::MinimizeButton) {
-                                    150
-                                } else {
-                                    100
-                                },
-                            )),
+                    )),
+                    Duration::from_millis(100),
+                );
+                self.minimize_button_color_animation.to(
+                    ColorF::from(ColorU::new(
+                        50,
+                        221,
+                        23,
+                        if new_over_state.contains(&AppEvent::MinimizeButton) {
+                            150
+                        } else {
+                            100
                         },
-                    ],
-                });
-                txn.generate_frame(0, RenderReasons::ANIMATED_PROPERTY);
-                wrapper
-                    .api
-                    .borrow_mut()
-                    .send_transaction(wrapper.document_id, txn);
+                    )),
+                    Duration::from_millis(100),
+                );
             }
 
             self.over_states = new_over_state;
@@ -211,7 +201,7 @@ impl App {
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
             PropertyBinding::Binding(
                 self.close_button_color_key,
-                ColorF::from(ColorU::new(255, 79, 0, 100)),
+                self.close_button_color_animation.value,
             ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -233,7 +223,7 @@ impl App {
             maximize_button_common_item_properties,
             PropertyBinding::Binding(
                 self.maximize_button_color_key,
-                ColorF::from(ColorU::new(255, 189, 0, 100)),
+                self.maximize_button_color_animation.value,
             ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -255,7 +245,7 @@ impl App {
             minimize_button_common_item_properties,
             PropertyBinding::Binding(
                 self.minimize_button_color_key,
-                ColorF::from(ColorU::new(50, 221, 23, 100)),
+                self.minimize_button_color_animation.value,
             ),
             BorderRadius::new(3.0, 3.0, 3.0, 3.0),
             ClipMode::Clip,
@@ -269,6 +259,10 @@ impl App {
 
 impl WindowInitTrait<GlobalState> for App {
     fn new(wrapper: &mut WindowWrapper, global_state: Arc<GlobalState>) -> Box<dyn WindowTrait> {
+        let over_color_animation = |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
+            value.a = (to.a - from.a) * coef as f32 + from.a
+        };
+
         Box::new(Self {
             font: wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
             do_exit: false,
@@ -279,6 +273,18 @@ impl WindowInitTrait<GlobalState> for App {
             close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             minimize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
+            close_button_color_animation: Animation::new(
+                ColorF::from(ColorU::new(255, 79, 0, 100)),
+                over_color_animation,
+            ),
+            maximize_button_color_animation: Animation::new(
+                ColorF::from(ColorU::new(255, 189, 0, 100)),
+                over_color_animation,
+            ),
+            minimize_button_color_animation: Animation::new(
+                ColorF::from(ColorU::new(50, 221, 23, 100)),
+                over_color_animation,
+            ),
         })
     }
 }
@@ -315,7 +321,36 @@ impl WindowTrait for App {
         value
     }
 
-    fn animate(&mut self, _txn: &mut Transaction) {}
+    fn animate(&mut self, txn: &mut Transaction) {
+        let mut colors = vec![];
+
+        if self.close_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.close_button_color_key,
+                value: self.close_button_color_animation.value,
+            });
+        }
+        if self.maximize_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.maximize_button_color_key,
+                value: self.maximize_button_color_animation.value,
+            });
+        }
+        if self.minimize_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.minimize_button_color_key,
+                value: self.minimize_button_color_animation.value,
+            });
+        }
+
+        if !colors.is_empty() {
+            txn.append_dynamic_properties(DynamicProperties {
+                transforms: vec![],
+                floats: vec![],
+                colors,
+            });
+        }
+    }
 
     fn redraw(&mut self, frame_builder: &mut FrameBuilder, wrapper: &mut WindowWrapper) {
         let window_size = wrapper.get_window_size();

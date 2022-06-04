@@ -304,7 +304,7 @@ impl<T> Window<T> {
     }
 
     pub fn run(&mut self) {
-        let mut timer = Timer::new(Duration::from_millis(12));
+        let mut timer = Timer::new(Duration::from_millis(16));
 
         loop {
             let mut exit = false;

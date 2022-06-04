@@ -1,17 +1,17 @@
 use std::time::{Duration, Instant};
 
-struct Animation<T: Clone, U: Fn(&T, &T, &mut T, f64)> {
+pub struct Animation<T: Clone> {
     from: T,
     to: T,
     pub value: T,
     start_time: Instant,
     duration: Duration,
     running: bool,
-    transform_closure: U,
+    transform_closure: fn(&T, &T, &mut T, f64),
 }
 
-impl<T: Clone, U: Fn(&T, &T, &mut T, f64)> Animation<T, U> {
-    pub fn new(value: T, transform_closure: U) -> Self {
+impl<T: Clone> Animation<T> {
+    pub fn new(value: T, transform_closure: fn(&T, &T, &mut T, f64)) -> Self {
         Self {
             from: value.clone(),
             to: value.clone(),
