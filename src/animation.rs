@@ -19,7 +19,7 @@ impl AnimationCurve {
         curve: |coef: f64| -((PI * coef).cos() - 1.0) / 2.0,
     };
 }
-pub struct Animation<T: Clone> {
+pub struct Animation<T: Clone + PartialEq> {
     from: T,
     to: T,
     pub value: T,
@@ -30,7 +30,7 @@ pub struct Animation<T: Clone> {
     animation_curve: AnimationCurve,
 }
 
-impl<T: Clone> Animation<T> {
+impl<T: Clone + PartialEq> Animation<T> {
     pub fn new(value: T, transform_closure: fn(&T, &T, &mut T, f64)) -> Self {
         Self {
             from: value.clone(),
@@ -45,11 +45,11 @@ impl<T: Clone> Animation<T> {
     }
 
     pub fn to(&mut self, to: T, duration: Duration, animation_curve: AnimationCurve) {
+        self.running = self.value != to;
         self.from = self.value.clone();
         self.to = to;
         self.start_time = Instant::now();
         self.duration = duration;
-        self.running = true;
         self.animation_curve = animation_curve;
     }
 
