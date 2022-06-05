@@ -26,7 +26,7 @@ use webrender::api::{ColorF, DocumentId, Epoch, FontKey, PipelineId, RenderReaso
 use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ButtonId, DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Icon, WindowBuilder};
@@ -69,6 +69,8 @@ impl WindowOptions {
 
 pub struct WindowWrapper {
     pub title: &'static str,
+    pub min_size: Option<PhysicalSize<u32>>,
+    pub max_size: Option<PhysicalSize<u32>>,
     pub context: Rc<WindowedContext<PossiblyCurrent>>,
     pub renderer: Renderer,
     pub pipeline_id: PipelineId,
@@ -82,6 +84,8 @@ pub struct WindowWrapper {
 impl WindowWrapper {
     fn new(
         title: &'static str,
+        min_size: Option<PhysicalSize<u32>>,
+        max_size: Option<PhysicalSize<u32>>,
         context: Rc<WindowedContext<PossiblyCurrent>>,
         renderer: Renderer,
         pipeline_id: PipelineId,
@@ -98,6 +102,8 @@ impl WindowWrapper {
         api.send_transaction(document_id, txn);
 
         Self {
+            min_size,
+            max_size,
             title,
             context,
             renderer,
@@ -126,6 +132,18 @@ impl WindowWrapper {
 
     pub fn get_window_size(&self) -> PhysicalSize<u32> {
         self.context.window().inner_size()
+    }
+
+    pub fn get_window_position(&self) -> PhysicalPosition<i32> {
+        self.context.window().outer_position().unwrap()
+    }
+
+    pub fn set_window_size(&self, size: PhysicalSize<u32>) {
+        self.context.window().set_inner_size(size)
+    }
+
+    pub fn set_window_position(&self, position: PhysicalPosition<i32>) {
+        self.context.window().set_outer_position(position)
     }
 
     fn redraw(&mut self, window: &mut Box<dyn WindowTrait>, force: bool) {
@@ -268,6 +286,8 @@ impl<T> Window<T> {
             event_loop,
             wrapper: WindowWrapper::new(
                 window_options.title,
+                window_options.min_size,
+                window_options.max_size,
                 Rc::new(context),
                 renderer,
                 pipeline_id,
@@ -291,6 +311,7 @@ impl<T> Window<T> {
 
         loop {
             let mut exit = false;
+            let mut device_motion = (0.0, 0.0);
 
             self.event_loop
                 .run_return(|global_event, _event_loop_window_target, control_flow| {
@@ -335,9 +356,27 @@ impl<T> Window<T> {
                             },
                             _ => {}
                         },
+                        winit::event::Event::DeviceEvent { event, .. } => match event {
+                            DeviceEvent::MouseMotion { delta } => {
+                                device_motion.0 += delta.0;
+                                device_motion.1 += delta.1;
+                            }
+                            DeviceEvent::Button { button, state } => match state {
+                                ElementState::Released => self
+                                    .window
+                                    .on_event(Event::DeviceReleased(button), &mut self.wrapper),
+                                _ => {}
+                            },
+                            _ => {}
+                        },
                         _ => {}
                     };
                 });
+
+            if device_motion.0 != 0.0 || device_motion.1 != 0.0 {
+                self.window
+                    .on_event(Event::DeviceMotion(device_motion), &mut self.wrapper);
+            }
 
             if exit || self.window.should_exit() {
                 break;
@@ -379,6 +418,8 @@ pub enum Event {
     MouseReleased(MouseButton),
     MouseEntered,
     MouseLeft,
+    DeviceMotion((f64, f64)),
+    DeviceReleased(ButtonId),
 }
 
 pub trait WindowInitTrait<T>: WindowTrait {
