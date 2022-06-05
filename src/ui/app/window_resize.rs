@@ -49,7 +49,6 @@ impl App {
     pub fn update_window_resize(&self, delta: (f64, f64), wrapper: &mut WindowWrapper) {
         if let Some(event) = self.resizing.clone() {
             let window_size = wrapper.get_window_size();
-            let min_window_size = wrapper.min_size.unwrap_or(PhysicalSize::default());
             let window_position = wrapper.get_window_position();
             let mut new_window_size =
                 PhysicalSize::new(window_size.width as f64, window_size.height as f64);
@@ -91,8 +90,8 @@ impl App {
             }
 
             wrapper.set_window_size(PhysicalSize::new(
-                new_window_size.width.max(min_window_size.width as f64) as u32,
-                new_window_size.height.max(min_window_size.height as f64) as u32,
+                new_window_size.width as u32,
+                new_window_size.height as u32,
             ));
             wrapper.set_window_position(PhysicalPosition::new(
                 new_window_position.x as i32,

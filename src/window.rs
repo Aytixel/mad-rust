@@ -139,7 +139,23 @@ impl WindowWrapper {
     }
 
     pub fn set_window_size(&self, size: PhysicalSize<u32>) {
-        self.context.window().set_inner_size(size)
+        let min_window_size = self.min_size.unwrap_or(PhysicalSize::default());
+
+        if let Some(max_window_size) = self.max_size {
+            self.context.window().set_inner_size(PhysicalSize::new(
+                size.width
+                    .max(min_window_size.width)
+                    .min(max_window_size.width),
+                size.height
+                    .max(min_window_size.height)
+                    .min(max_window_size.height),
+            ))
+        } else {
+            self.context.window().set_inner_size(PhysicalSize::new(
+                size.width.max(min_window_size.width),
+                size.height.max(min_window_size.height),
+            ))
+        }
     }
 
     pub fn set_window_position(&self, position: PhysicalPosition<i32>) {
