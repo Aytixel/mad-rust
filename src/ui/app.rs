@@ -12,15 +12,24 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, WorldPoint};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, PrimitiveFlags,
-    PropertyBinding, PropertyBindingKey, PropertyValue,
+    BorderRadius, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion, DynamicProperties,
+    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue, SpaceAndClipInfo,
 };
 use webrender::Transaction;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::MouseButton;
+use winit::window::CursorIcon;
 
 #[derive(Clone, PartialEq, Eq, Hash, FromPrimitive)]
 enum AppEvent {
+    WindowResizeTopLeft,
+    WindowResizeTopRight,
+    WindowResizeTop,
+    WindowResizeBottomLeft,
+    WindowResizeBottomRight,
+    WindowResizeBottom,
+    WindowResizeLeft,
+    WindowResizeRight,
     CloseButton,
     MaximizeButton,
     MinimizeButton,
@@ -98,57 +107,204 @@ impl App {
                 }
 
                 // over states processing
-                if let AppEvent::CloseButton | AppEvent::MaximizeButton | AppEvent::MinimizeButton =
-                    event
-                {
-                    new_over_state.insert(event);
+                if let AppEventType::UpdateOverState = target_event_type {
+                    if let AppEvent::WindowResizeTopLeft
+                    | AppEvent::WindowResizeTopRight
+                    | AppEvent::WindowResizeTop
+                    | AppEvent::WindowResizeBottomLeft
+                    | AppEvent::WindowResizeBottomRight
+                    | AppEvent::WindowResizeBottom
+                    | AppEvent::WindowResizeLeft
+                    | AppEvent::WindowResizeRight
+                    | AppEvent::CloseButton
+                    | AppEvent::MaximizeButton
+                    | AppEvent::MinimizeButton = event
+                    {
+                        new_over_state.insert(event);
+                    }
                 }
             }
 
             if self.over_states != new_over_state {
-                self.close_button_color_animation.to(
-                    if new_over_state.contains(&AppEvent::CloseButton) {
-                        ColorF::new_u(255, 79, 0, 150)
-                    } else {
-                        ColorF::new_u(255, 79, 0, 100)
-                    },
-                    Duration::from_millis(100),
-                    if new_over_state.contains(&AppEvent::CloseButton) {
-                        AnimationCurve::EASE_OUT
-                    } else {
-                        AnimationCurve::EASE_IN
-                    },
-                );
-                self.maximize_button_color_animation.to(
-                    if new_over_state.contains(&AppEvent::MaximizeButton) {
-                        ColorF::new_u(255, 189, 0, 150)
-                    } else {
-                        ColorF::new_u(255, 189, 0, 100)
-                    },
-                    Duration::from_millis(100),
-                    if new_over_state.contains(&AppEvent::MaximizeButton) {
-                        AnimationCurve::EASE_OUT
-                    } else {
-                        AnimationCurve::EASE_IN
-                    },
-                );
-                self.minimize_button_color_animation.to(
-                    if new_over_state.contains(&AppEvent::MinimizeButton) {
-                        ColorF::new_u(50, 221, 23, 150)
-                    } else {
-                        ColorF::new_u(50, 221, 23, 100)
-                    },
-                    Duration::from_millis(100),
-                    if new_over_state.contains(&AppEvent::MinimizeButton) {
-                        AnimationCurve::EASE_OUT
-                    } else {
-                        AnimationCurve::EASE_IN
-                    },
-                );
+                // title bar button animation
+                if new_over_state.contains(&AppEvent::CloseButton) {
+                    self.close_button_color_animation.to(
+                        ColorF::new_u(255, 79, 0, 150),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_OUT,
+                    );
+                } else {
+                    self.close_button_color_animation.to(
+                        ColorF::new_u(255, 79, 0, 100),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_IN,
+                    );
+                }
+                if new_over_state.contains(&AppEvent::MaximizeButton) {
+                    self.maximize_button_color_animation.to(
+                        ColorF::new_u(255, 189, 0, 150),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_OUT,
+                    );
+                } else {
+                    self.maximize_button_color_animation.to(
+                        ColorF::new_u(255, 189, 0, 100),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_IN,
+                    );
+                }
+                if new_over_state.contains(&AppEvent::MinimizeButton) {
+                    self.minimize_button_color_animation.to(
+                        ColorF::new_u(50, 221, 23, 150),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_OUT,
+                    );
+                } else {
+                    self.minimize_button_color_animation.to(
+                        ColorF::new_u(50, 221, 23, 100),
+                        Duration::from_millis(100),
+                        AnimationCurve::EASE_IN,
+                    );
+                }
+            }
+
+            // window resize cusor update
+            let test_cursor = |event: &AppEvent, cursor: CursorIcon| -> bool {
+                if new_over_state.contains(event) {
+                    wrapper.context.window().set_cursor_icon(cursor);
+
+                    true
+                } else {
+                    false
+                }
+            };
+            let is_cursor_set = test_cursor(&AppEvent::WindowResizeTopLeft, CursorIcon::NwResize)
+                || test_cursor(&AppEvent::WindowResizeTopRight, CursorIcon::NeResize)
+                || test_cursor(&AppEvent::WindowResizeTop, CursorIcon::NResize)
+                || test_cursor(&AppEvent::WindowResizeBottomLeft, CursorIcon::SwResize)
+                || test_cursor(&AppEvent::WindowResizeBottomRight, CursorIcon::SeResize)
+                || test_cursor(&AppEvent::WindowResizeBottom, CursorIcon::SResize)
+                || test_cursor(&AppEvent::WindowResizeLeft, CursorIcon::WResize)
+                || test_cursor(&AppEvent::WindowResizeRight, CursorIcon::EResize);
+
+            if !is_cursor_set {
+                wrapper
+                    .context
+                    .window()
+                    .set_cursor_icon(CursorIcon::Default);
             }
 
             self.over_states = new_over_state;
         }
+    }
+
+    fn add_window_resize_hit_test(
+        &mut self,
+        window_size: PhysicalSize<u32>,
+        frame_builder: &mut FrameBuilder,
+    ) {
+        let builder = &mut frame_builder.builder;
+        let clip_id = builder.define_clip_rounded_rect(
+            &frame_builder.space_and_clip,
+            ComplexClipRegion::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(5.0, 5.0),
+                    LayoutSize::new(
+                        window_size.width as f32 - 10.0,
+                        window_size.height as f32 - 10.0,
+                    ),
+                ),
+                BorderRadius::uniform(5.0),
+                ClipMode::ClipOut,
+            ),
+        );
+        let space_and_clip = SpaceAndClipInfo {
+            spatial_id: frame_builder.space_and_clip.spatial_id,
+            clip_id,
+        };
+
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(20.0, 0.0),
+                    LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeTop.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(20.0, window_size.height as f32 - 5.0),
+                    LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeBottom.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(0.0, 20.0),
+                    LayoutSize::new(5.0, window_size.height as f32 - 40.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeLeft.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(window_size.width as f32 - 5.0, 20.0),
+                    LayoutSize::new(5.0, window_size.height as f32 - 40.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeRight.into(), 0),
+        );
+
+        // corners
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(LayoutPoint::new(0.0, 0.0), LayoutSize::new(20.0, 20.0)),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeTopLeft.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(window_size.width as f32 - 20.0, 0.0),
+                    LayoutSize::new(20.0, 20.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeTopRight.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(0.0, window_size.height as f32 - 20.0),
+                    LayoutSize::new(20.0, 20.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeBottomLeft.into(), 0),
+        );
+        builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::new_with_size(
+                    LayoutPoint::new(
+                        window_size.width as f32 - 20.0,
+                        window_size.height as f32 - 20.0,
+                    ),
+                    LayoutSize::new(20.0, 20.0),
+                ),
+                space_and_clip,
+            ),
+            (AppEvent::WindowResizeBottomRight.into(), 0),
+        );
     }
 
     fn draw_title_bar(
@@ -170,7 +326,7 @@ impl App {
         builder.push_rounded_rect(
             title_bar_common_item_properties,
             ColorF::new_u(66, 66, 66, 100),
-            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            BorderRadius::uniform(3.0),
             ClipMode::Clip,
         );
         builder.push_hit_test(
@@ -203,7 +359,7 @@ impl App {
                 self.close_button_color_key,
                 self.close_button_color_animation.value,
             ),
-            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            BorderRadius::uniform(3.0),
             ClipMode::Clip,
         );
         builder.push_hit_test(
@@ -225,7 +381,7 @@ impl App {
                 self.maximize_button_color_key,
                 self.maximize_button_color_animation.value,
             ),
-            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            BorderRadius::uniform(3.0),
             ClipMode::Clip,
         );
         builder.push_hit_test(
@@ -247,7 +403,7 @@ impl App {
                 self.minimize_button_color_key,
                 self.minimize_button_color_animation.value,
             ),
-            BorderRadius::new(3.0, 3.0, 3.0, 3.0),
+            BorderRadius::uniform(3.0),
             ClipMode::Clip,
         );
         builder.push_hit_test(
@@ -361,6 +517,7 @@ impl WindowTrait for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
+        self.add_window_resize_hit_test(window_size, frame_builder);
         self.draw_title_bar(window_size, frame_builder, wrapper);
 
         frame_builder.builder.pop_stacking_context();
