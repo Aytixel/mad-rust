@@ -78,41 +78,40 @@ impl App {
                 )
                 .items;
 
+            // event processing
+            let event = AppEvent::from(hit_items[0].tag.0);
+
+            match target_event_type {
+                AppEventType::MousePressed => match event {
+                    AppEvent::TitleBar => wrapper.context.window().drag_window().unwrap(),
+                    AppEvent::WindowResizeTopLeft
+                    | AppEvent::WindowResizeTopRight
+                    | AppEvent::WindowResizeTop
+                    | AppEvent::WindowResizeBottomLeft
+                    | AppEvent::WindowResizeBottomRight
+                    | AppEvent::WindowResizeBottom
+                    | AppEvent::WindowResizeLeft
+                    | AppEvent::WindowResizeRight => self.resizing = Some(event.clone()),
+                    _ => {}
+                },
+                AppEventType::MouseReleased => match event {
+                    AppEvent::CloseButton => self.do_exit = true,
+                    AppEvent::MaximizeButton => wrapper
+                        .context
+                        .window()
+                        .set_maximized(!wrapper.context.window().is_maximized()),
+                    AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
+                    _ => {}
+                },
+                _ => {}
+            }
+
+            // over states processing
             let mut new_over_state = HashSet::new();
 
-            for (index, hit_item) in hit_items.iter().enumerate() {
+            for hit_item in hit_items {
                 let event = AppEvent::from(hit_item.tag.0);
 
-                if index == 0 {
-                    match target_event_type {
-                        AppEventType::MousePressed => match event {
-                            AppEvent::TitleBar => wrapper.context.window().drag_window().unwrap(),
-                            AppEvent::WindowResizeTopLeft
-                            | AppEvent::WindowResizeTopRight
-                            | AppEvent::WindowResizeTop
-                            | AppEvent::WindowResizeBottomLeft
-                            | AppEvent::WindowResizeBottomRight
-                            | AppEvent::WindowResizeBottom
-                            | AppEvent::WindowResizeLeft
-                            | AppEvent::WindowResizeRight => self.resizing = Some(event.clone()),
-                            _ => {}
-                        },
-                        AppEventType::MouseReleased => match event {
-                            AppEvent::CloseButton => self.do_exit = true,
-                            AppEvent::MaximizeButton => wrapper
-                                .context
-                                .window()
-                                .set_maximized(!wrapper.context.window().is_maximized()),
-                            AppEvent::MinimizeButton => {
-                                wrapper.context.window().set_minimized(true)
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    }
-                }
-
-                // over states processing
                 if let AppEventType::UpdateOverState = target_event_type {
                     if let AppEvent::WindowResizeTopLeft
                     | AppEvent::WindowResizeTopRight
