@@ -20,6 +20,8 @@ use webrender::Transaction;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
+use self::device_list::DeviceList;
+
 const EXT_SCROLL_ID_ROOT: u64 = 0;
 
 #[derive(Clone, PartialEq, Eq, Hash, FromPrimitive, Debug)]
@@ -73,6 +75,7 @@ pub struct App {
     scroll_frame_size: LayoutSize,
     scroll_content_size: LayoutSize,
     resizing: Option<AppEvent>,
+    document: Box<dyn DocumentTrait>,
 }
 
 impl App {
@@ -240,6 +243,7 @@ impl WindowInitTrait for App {
             ),
             scroll_content_size: LayoutSize::zero(),
             resizing: None,
+            document: Box::new(DeviceList::new()),
         })
     }
 }
@@ -299,6 +303,7 @@ impl WindowTrait for App {
 
     fn animate(&mut self, txn: &mut Transaction) {
         self.animate_title_bar(txn);
+        self.document.animate(txn);
     }
 
     fn redraw(&mut self, frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper) {
@@ -308,9 +313,10 @@ impl WindowTrait for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        self.scroll_content_size = self.calculate_device_list_size(self.scroll_frame_size);
+        // calcultate the scroll frame content size
+        self.scroll_content_size = self.document.calculate_size(self.scroll_frame_size);
 
-        // scroll farme / main frame
+        // scroll frame / main frame
         frame_builder.builder.push_simple_stacking_context(
             LayoutPoint::new(10.0, 55.0),
             frame_builder.space_and_clip.spatial_id,
@@ -344,11 +350,12 @@ impl WindowTrait for App {
         };
 
         // draw the scroll frame content
-        self.draw_device_list(self.scroll_frame_size, frame_builder, space_and_clip);
+        self.document
+            .draw(self.scroll_frame_size, frame_builder, space_and_clip);
 
         frame_builder.builder.pop_stacking_context();
 
-        self.draw_title_bar("Device List", self.window_size, frame_builder);
+        self.draw_title_bar(self.document.get_title(), self.window_size, frame_builder);
         self.draw_window_resize(self.window_size, frame_builder);
 
         frame_builder.builder.pop_stacking_context();
@@ -357,4 +364,19 @@ impl WindowTrait for App {
     fn unload(&mut self) {
         self.font.unload();
     }
+}
+
+pub trait DocumentTrait {
+    fn get_title(&self) -> &'static str;
+
+    fn animate(&mut self, txn: &mut Transaction);
+
+    fn calculate_size(&self, frame_size: LayoutSize) -> LayoutSize;
+
+    fn draw(
+        &self,
+        frame_size: LayoutSize,
+        frame_builder: &mut FrameBuilder,
+        space_and_clip: SpaceAndClipInfo,
+    );
 }

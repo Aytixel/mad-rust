@@ -1,18 +1,30 @@
-use crate::ui::App;
+use crate::ui::DocumentTrait;
 use crate::window::FrameBuilder;
 
 use webrender::api::units::{LayoutRect, LayoutSize};
 use webrender::api::{ColorF, CommonItemProperties, SpaceAndClipInfo};
 use webrender::Transaction;
 
-impl App {
-    pub fn _animate_device_list(&mut self, _txn: &mut Transaction) {}
+pub struct DeviceList {}
 
-    pub fn calculate_device_list_size(&self, frame_size: LayoutSize) -> LayoutSize {
+impl DeviceList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl DocumentTrait for DeviceList {
+    fn get_title(&self) -> &'static str {
+        "Device List"
+    }
+
+    fn animate(&mut self, _txn: &mut Transaction) {}
+
+    fn calculate_size(&self, frame_size: LayoutSize) -> LayoutSize {
         frame_size
     }
 
-    pub fn draw_device_list(
+    fn draw(
         &self,
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
