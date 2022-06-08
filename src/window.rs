@@ -17,6 +17,8 @@ pub use frame_builder::FrameBuilder;
 
 use notifier::Notifier;
 
+use crate::GlobalState;
+
 use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
@@ -26,10 +28,27 @@ use webrender::api::{ColorF, DocumentId, Epoch, FontKey, PipelineId, RenderReaso
 use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ButtonId, DeviceEvent, ElementState, MouseButton, WindowEvent};
+use winit::event::{
+    ButtonId, DeviceEvent, ElementState, MouseButton, MouseScrollDelta, WindowEvent,
+};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Icon, WindowBuilder};
+
+const LINE_HEIGHT: f32 = 21.0;
+
+#[derive(Clone, Copy)]
+pub enum Event {
+    Resized(PhysicalSize<u32>),
+    MousePosition(PhysicalPosition<f64>),
+    MouseWheel(PhysicalPosition<f64>),
+    MousePressed(MouseButton),
+    MouseReleased(MouseButton),
+    MouseEntered,
+    MouseLeft,
+    DeviceMotion(PhysicalPosition<f64>),
+    DeviceReleased(ButtonId),
+}
 
 pub struct WindowOptions {
     pub title: &'static str,
@@ -77,6 +96,7 @@ pub struct WindowWrapper {
     pub document_id: DocumentId,
     epoch: Epoch,
     pub api: Rc<RefCell<RenderApi>>,
+    pub global_state: Arc<GlobalState>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
     device_size: DeviceIntSize,
 }
@@ -92,6 +112,7 @@ impl WindowWrapper {
         document_id: DocumentId,
         epoch: Epoch,
         mut api: RenderApi,
+        global_state: Arc<GlobalState>,
         font_key_hashmap: HashMap<&'static str, FontKey>,
     ) -> Self {
         let window_size = context.window().inner_size();
@@ -112,6 +133,7 @@ impl WindowWrapper {
             epoch,
             api: Rc::new(RefCell::new(api)),
             font_key_hashmap,
+            global_state,
             device_size: DeviceIntSize::new(window_size.width as i32, window_size.height as i32),
         }
     }
@@ -167,7 +189,7 @@ impl WindowWrapper {
 
         window.animate(&mut txn);
 
-        if window.should_redraw() || force {
+        if window.should_redraw() || self.global_state.should_redraw() || force {
             let mut frame_builder = FrameBuilder::new(self);
 
             window.redraw(&mut frame_builder, self);
@@ -230,15 +252,18 @@ impl WindowWrapper {
     }
 }
 
-pub struct Window<T> {
+pub struct Window {
     event_loop: EventLoop<()>,
     pub wrapper: WindowWrapper,
     window: Box<dyn WindowTrait>,
-    global_state: Arc<T>,
 }
 
-impl<T> Window<T> {
-    pub fn new(window_options: WindowOptions, global_state: T, clear_color: ColorF) -> Self {
+impl Window {
+    pub fn new(
+        window_options: WindowOptions,
+        global_state: Arc<GlobalState>,
+        clear_color: ColorF,
+    ) -> Self {
         let event_loop = EventLoop::new();
         let window = DefaultWindow::new();
         let mut window_builder = WindowBuilder::new()
@@ -310,16 +335,16 @@ impl<T> Window<T> {
                 document_id,
                 epoch,
                 api,
+                global_state,
                 HashMap::new(),
             ),
             window,
-            global_state: Arc::new(global_state),
         }
     }
 
-    pub fn set_window<U: WindowInitTrait<T> + 'static>(&mut self) {
+    pub fn set_window<U: WindowInitTrait>(&mut self) {
         self.window.unload();
-        self.window = U::new(&mut self.wrapper, self.global_state.clone());
+        self.window = U::new(&mut self.wrapper);
     }
 
     pub fn run(&mut self) {
@@ -327,7 +352,7 @@ impl<T> Window<T> {
 
         loop {
             let mut exit = false;
-            let mut device_motion = (0.0, 0.0);
+            let mut device_motion = PhysicalPosition::new(0.0, 0.0);
 
             self.event_loop
                 .run_return(|global_event, _event_loop_window_target, control_flow| {
@@ -362,6 +387,17 @@ impl<T> Window<T> {
                             WindowEvent::CursorLeft { .. } => {
                                 self.window.on_event(Event::MouseLeft, &mut self.wrapper)
                             }
+                            WindowEvent::MouseWheel { delta, .. } => self.window.on_event(
+                                Event::MouseWheel(match delta {
+                                    MouseScrollDelta::LineDelta(dx, dy) => {
+                                        PhysicalPosition::new(dx as f64, (dy * LINE_HEIGHT) as f64)
+                                    }
+                                    MouseScrollDelta::PixelDelta(pos) => {
+                                        PhysicalPosition::new(pos.x, pos.y)
+                                    }
+                                }),
+                                &mut self.wrapper,
+                            ),
                             WindowEvent::MouseInput { state, button, .. } => match state {
                                 ElementState::Pressed => self
                                     .window
@@ -374,8 +410,8 @@ impl<T> Window<T> {
                         },
                         winit::event::Event::DeviceEvent { event, .. } => match event {
                             DeviceEvent::MouseMotion { delta } => {
-                                device_motion.0 += delta.0;
-                                device_motion.1 += delta.1;
+                                device_motion.x += delta.0;
+                                device_motion.y += delta.1;
                             }
                             DeviceEvent::Button { button, state } => match state {
                                 ElementState::Released => self
@@ -389,7 +425,7 @@ impl<T> Window<T> {
                     };
                 });
 
-            if device_motion.0 != 0.0 || device_motion.1 != 0.0 {
+            if device_motion.x != 0.0 || device_motion.y != 0.0 {
                 self.window
                     .on_event(Event::DeviceMotion(device_motion), &mut self.wrapper);
             }
@@ -426,20 +462,8 @@ impl<T> Window<T> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum Event {
-    Resized(PhysicalSize<u32>),
-    MousePosition(PhysicalPosition<f64>),
-    MousePressed(MouseButton),
-    MouseReleased(MouseButton),
-    MouseEntered,
-    MouseLeft,
-    DeviceMotion((f64, f64)),
-    DeviceReleased(ButtonId),
-}
-
-pub trait WindowInitTrait<T>: WindowTrait {
-    fn new(wrapper: &mut WindowWrapper, global_state: Arc<T>) -> Box<dyn WindowTrait>;
+pub trait WindowInitTrait: WindowTrait {
+    fn new(wrapper: &mut WindowWrapper) -> Box<dyn WindowTrait>;
 }
 
 pub trait WindowTrait {

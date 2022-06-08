@@ -46,7 +46,7 @@ impl App {
         }
     }
 
-    pub fn update_window_resize(&self, delta: (f64, f64), wrapper: &mut WindowWrapper) {
+    pub fn update_window_resize(&self, delta: PhysicalPosition<f64>, wrapper: &mut WindowWrapper) {
         if let Some(event) = self.resizing.clone() {
             let window_size = wrapper.get_window_size();
             let window_position = wrapper.get_window_position();
@@ -57,35 +57,35 @@ impl App {
 
             match event {
                 AppEvent::WindowResizeTopLeft => {
-                    new_window_position.x += delta.0;
-                    new_window_size.width -= delta.0;
-                    new_window_position.y += delta.1;
-                    new_window_size.height -= delta.1;
+                    new_window_position.x += delta.x;
+                    new_window_size.width -= delta.x;
+                    new_window_position.y += delta.y;
+                    new_window_size.height -= delta.y;
                 }
                 AppEvent::WindowResizeTopRight => {
-                    new_window_size.width += delta.0;
-                    new_window_position.y += delta.1;
-                    new_window_size.height -= delta.1;
+                    new_window_size.width += delta.x;
+                    new_window_position.y += delta.y;
+                    new_window_size.height -= delta.y;
                 }
                 AppEvent::WindowResizeTop => {
-                    new_window_position.y += delta.1;
-                    new_window_size.height -= delta.1;
+                    new_window_position.y += delta.y;
+                    new_window_size.height -= delta.y;
                 }
                 AppEvent::WindowResizeBottomLeft => {
-                    new_window_position.x += delta.0;
-                    new_window_size.width -= delta.0;
-                    new_window_size.height += delta.1;
+                    new_window_position.x += delta.x;
+                    new_window_size.width -= delta.x;
+                    new_window_size.height += delta.y;
                 }
                 AppEvent::WindowResizeBottomRight => {
-                    new_window_size.width += delta.0;
-                    new_window_size.height += delta.1;
+                    new_window_size.width += delta.x;
+                    new_window_size.height += delta.y;
                 }
-                AppEvent::WindowResizeBottom => new_window_size.height += delta.1,
+                AppEvent::WindowResizeBottom => new_window_size.height += delta.y,
                 AppEvent::WindowResizeLeft => {
-                    new_window_position.x += delta.0;
-                    new_window_size.width -= delta.0;
+                    new_window_position.x += delta.x;
+                    new_window_size.width -= delta.x;
                 }
-                AppEvent::WindowResizeRight => new_window_size.width += delta.0,
+                AppEvent::WindowResizeRight => new_window_size.width += delta.x,
                 _ => {}
             }
 

@@ -90,6 +90,7 @@ impl App {
 
     pub fn draw_title_bar(
         &mut self,
+        title: &'static str,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
         wrapper: &mut WindowWrapper,
@@ -119,7 +120,7 @@ impl App {
         self.font.push_text(
             builder,
             &wrapper.api.borrow(),
-            "Device List",
+            title,
             ColorF::new_u(255, 255, 255, 100),
             LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
