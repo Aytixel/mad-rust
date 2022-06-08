@@ -49,41 +49,48 @@ fn listening_new_device(
     let mut timer = Timer::new(TIMEOUT_1S);
 
     loop {
-        for device in Context::new().unwrap().devices().unwrap().iter() {
-            let device_descriptor = device.device_descriptor().unwrap();
+        if let Ok(context) = Context::new() {
+            if let Ok(devices) = context.devices() {
+                for device in devices.iter() {
+                    if let Ok(device_descriptor) = device.device_descriptor() {
+                        if device_descriptor.vendor_id() == VID
+                            && device_descriptor.product_id() == PID
+                        {
+                            if let Ok(device_handle) = device.open() {
+                                if let Ok(languages) = device_handle.read_languages(TIMEOUT_1S) {
+                                    if let Ok(serial_number) = device_handle
+                                        .read_serial_number_string(
+                                            languages[0],
+                                            &device_descriptor,
+                                            TIMEOUT_1S,
+                                        )
+                                    {
+                                        let mut device_list = match device_list_mutex.lock() {
+                                            Ok(guard) => guard,
+                                            Err(poisoned) => poisoned.into_inner(),
+                                        };
 
-            if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
-                if let Ok(device_handle) = device.open() {
-                    if let Some(serial_number) = device_handle
-                        .read_serial_number_string(
-                            device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
-                            &device_descriptor,
-                            TIMEOUT_1S,
-                        )
-                        .ok()
-                    {
-                        let mut device_list = match device_list_mutex.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                                        if let None = device_list.get(&serial_number) {
+                                            let host = host.clone();
+                                            let device_list_mutex = device_list_mutex.clone();
 
-                        if let None = device_list.get(&serial_number) {
-                            let host = host.clone();
-                            let device_list_mutex = device_list_mutex.clone();
+                                            device_list.insert(serial_number.clone());
 
-                            device_list.insert(serial_number.clone());
+                                            spawn(move || {
+                                                run_device(serial_number.clone(), host.clone());
 
-                            spawn(move || {
-                                run_device(serial_number.clone(), host.clone());
+                                                match device_list_mutex.lock() {
+                                                    Ok(guard) => guard,
+                                                    Err(poisoned) => poisoned.into_inner(),
+                                                }
+                                                .remove(&serial_number);
 
-                                match device_list_mutex.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => poisoned.into_inner(),
+                                                host.send(Message::DeviceListUpdate);
+                                            });
+                                        }
+                                    }
                                 }
-                                .remove(&serial_number);
-
-                                host.send(Message::DeviceListUpdate);
-                            });
+                            }
                         }
                     }
                 }
@@ -95,22 +102,28 @@ fn listening_new_device(
 }
 
 fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
-    for device in Context::new().unwrap().devices().unwrap().iter() {
-        let device_descriptor = device.device_descriptor().unwrap();
-
-        if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID {
-            let device_handle = device.open().unwrap();
-
-            if let Some(serial_number_found) = device_handle
-                .read_serial_number_string(
-                    device_handle.read_languages(TIMEOUT_1S).unwrap()[0],
-                    &device_descriptor,
-                    TIMEOUT_1S,
-                )
-                .ok()
-            {
-                if serial_number == serial_number_found {
-                    return Some(device_handle);
+    if let Ok(context) = Context::new() {
+        if let Ok(devices) = context.devices() {
+            for device in devices.iter() {
+                if let Ok(device_descriptor) = device.device_descriptor() {
+                    if device_descriptor.vendor_id() == VID && device_descriptor.product_id() == PID
+                    {
+                        if let Ok(device_handle) = device.open() {
+                            if let Ok(languages) = device_handle.read_languages(TIMEOUT_1S) {
+                                if let Ok(serial_number_found) = device_handle
+                                    .read_serial_number_string(
+                                        languages[0],
+                                        &device_descriptor,
+                                        TIMEOUT_1S,
+                                    )
+                                {
+                                    if serial_number == serial_number_found {
+                                        return Some(device_handle);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -122,60 +135,65 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
 fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
         let device = device_handle.device();
-        let config_descriptor = device.config_descriptor(0).unwrap();
-        let interface = config_descriptor.interfaces().next().unwrap();
-        let interface_descriptor = interface.descriptors().next().unwrap();
-        let endpoint_descriptor = interface_descriptor.endpoint_descriptors().next().unwrap();
-        let endpoint = Endpoint {
-            config: config_descriptor.number(),
-            iface: interface_descriptor.interface_number(),
-            setting: interface_descriptor.setting_number(),
-            address: endpoint_descriptor.address(),
-        };
+        if let Ok(config_descriptor) = device.config_descriptor(0) {
+            if let Some(interface) = config_descriptor.interfaces().next() {
+                if let Some(interface_descriptor) = interface.descriptors().next() {
+                    if let Some(endpoint_descriptor) =
+                        interface_descriptor.endpoint_descriptors().next()
+                    {
+                        let endpoint = Endpoint {
+                            config: config_descriptor.number(),
+                            iface: interface_descriptor.interface_number(),
+                            setting: interface_descriptor.setting_number(),
+                            address: endpoint_descriptor.address(),
+                        };
 
-        let has_kernel_driver = match device_handle.kernel_driver_active(endpoint.iface) {
-            Ok(true) => {
-                device_handle.detach_kernel_driver(endpoint.iface).ok();
-                true
-            }
-            _ => false,
-        };
+                        let has_kernel_driver =
+                            match device_handle.kernel_driver_active(endpoint.iface) {
+                                Ok(true) => {
+                                    device_handle.detach_kernel_driver(endpoint.iface).ok();
+                                    true
+                                }
+                                _ => false,
+                            };
 
-        device_handle
-            .set_active_configuration(endpoint.config)
-            .unwrap();
-        device_handle.claim_interface(endpoint.iface).unwrap();
-        device_handle
-            .set_alternate_setting(endpoint.iface, endpoint.setting)
-            .unwrap();
+                        if let (Ok(_), Ok(_), Ok(_)) = (
+                            device_handle.set_active_configuration(endpoint.config),
+                            device_handle.claim_interface(endpoint.iface),
+                            device_handle.set_alternate_setting(endpoint.iface, endpoint.setting),
+                        ) {
+                            println!("{} connected", serial_number);
 
-        println!("{} connected", serial_number);
+                            dual_channel.send(Message::DeviceListUpdate);
 
-        dual_channel.send(Message::DeviceListUpdate);
+                            let mut buffer = [0; 8];
+                            let mut mapper = Mapper::new();
 
-        let mut buffer = [0; 8];
-        let mut mapper = Mapper::new();
+                            loop {
+                                match device_handle.read_interrupt(
+                                    endpoint.address,
+                                    &mut buffer,
+                                    Duration::from_millis(100),
+                                ) {
+                                    Ok(_) => {
+                                        //println!("{} : {:?}", serial_number, buffer);
+                                        mapper.emulate(&buffer);
+                                    }
+                                    Err(rusb::Error::Timeout) => {}
+                                    Err(err) => {
+                                        println!("{} disconnected : {}", serial_number, err);
+                                        break;
+                                    }
+                                }
+                            }
 
-        loop {
-            match device_handle.read_interrupt(
-                endpoint.address,
-                &mut buffer,
-                Duration::from_millis(100),
-            ) {
-                Ok(_) => {
-                    //println!("{} : {:?}", serial_number, buffer);
-                    mapper.emulate(&buffer);
+                            if has_kernel_driver {
+                                device_handle.attach_kernel_driver(endpoint.iface).ok();
+                            }
+                        }
+                    }
                 }
-                Err(rusb::Error::Timeout) => {}
-                Err(err) => {
-                    println!("{} disconnected : {}", serial_number, err);
-                    break;
-                }
             }
-        }
-
-        if has_kernel_driver {
-            device_handle.attach_kernel_driver(endpoint.iface).ok();
         }
     }
 }
