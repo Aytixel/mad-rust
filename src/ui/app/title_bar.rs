@@ -4,7 +4,7 @@ use std::time::Duration;
 use crate::animation::AnimationCurve;
 use crate::ui::{App, AppEvent};
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt, LayoutRectExt};
-use crate::window::{FrameBuilder, WindowWrapper};
+use crate::window::FrameBuilder;
 
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
@@ -93,7 +93,6 @@ impl App {
         title: &'static str,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
-        wrapper: &mut WindowWrapper,
     ) {
         let builder = &mut frame_builder.builder;
 
@@ -119,7 +118,6 @@ impl App {
         // title
         self.font.push_text(
             builder,
-            &wrapper.api.borrow(),
             title,
             ColorF::new_u(255, 255, 255, 200),
             LayoutPoint::new(20.0, 17.0),

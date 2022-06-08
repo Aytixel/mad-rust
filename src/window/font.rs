@@ -50,7 +50,6 @@ impl Font {
     pub fn push_text(
         &self,
         builder: &mut DisplayListBuilder,
-        api: &RenderApi,
         text: &'static str,
         color: ColorF,
         position: LayoutPoint,
@@ -63,13 +62,17 @@ impl Font {
         } else {
             4.0
         };
-        let glyph_indices: Vec<u32> = api
+        let glyph_indices: Vec<u32> = self
+            .api
+            .borrow()
             .get_glyph_indices(self.key, text)
             .into_iter()
             .flatten()
             .collect();
-        let glyph_dimension_options =
-            api.get_glyph_dimensions(self.instance_key, glyph_indices.clone());
+        let glyph_dimension_options = self
+            .api
+            .borrow()
+            .get_glyph_dimensions(self.instance_key, glyph_indices.clone());
         let mut glyph_instances = vec![];
         let mut glyph_position = position;
         let mut glyph_size = LayoutSize::new(0.0, self.size.to_f32_px());
