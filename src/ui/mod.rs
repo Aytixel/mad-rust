@@ -7,19 +7,24 @@ use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
 
+use glutin::dpi::PhysicalSize;
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
-use webrender::api::units::{Au, LayoutVector2D, WorldPoint};
+use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D, WorldPoint};
 use webrender::api::{
-    APZScrollGeneration, ColorF, ExternalScrollId, PipelineId, PrimitiveFlags, PropertyBindingKey,
-    RenderReasons, SampledScrollOffset,
+    APZScrollGeneration, ColorF, CommonItemProperties, ExternalScrollId, HasScrollLinkedEffect,
+    PipelineId, PrimitiveFlags, PropertyBindingKey, RenderReasons, SampledScrollOffset,
+    SpaceAndClipInfo, SpatialTreeItemKey,
 };
 use webrender::Transaction;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
+const EXT_SCROLL_ID_ROOT: u64 = 0;
+
 #[derive(Clone, PartialEq, Eq, Hash, FromPrimitive, Debug)]
 pub enum AppEvent {
+    Scroll,
     WindowResizeTopLeft,
     WindowResizeTopRight,
     WindowResizeTop,
@@ -56,6 +61,7 @@ pub struct App {
     do_exit: bool,
     do_redraw: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
+    window_size: PhysicalSize<u32>,
     over_states: HashSet<AppEvent>,
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
@@ -63,8 +69,10 @@ pub struct App {
     close_button_color_animation: Animation<ColorF>,
     maximize_button_color_animation: Animation<ColorF>,
     minimize_button_color_animation: Animation<ColorF>,
-    resizing: Option<AppEvent>,
     scroll_offset: LayoutVector2D,
+    scroll_frame_size: LayoutSize,
+    scroll_content_size: LayoutSize,
+    resizing: Option<AppEvent>,
 }
 
 impl App {
@@ -143,6 +151,57 @@ impl App {
             self.over_states = new_over_state;
         }
     }
+
+    fn calculate_wheel_scroll(
+        &mut self,
+        delta: PhysicalPosition<f64>,
+        wrapper: &mut WindowWrapper,
+    ) {
+        if let Some(mouse_position) = self.mouse_position {
+            let hit_items = wrapper
+                .api
+                .borrow()
+                .hit_test(
+                    wrapper.document_id,
+                    WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
+                )
+                .items;
+
+            for hit_item in hit_items {
+                if let Some(AppEvent::Scroll) = AppEvent::from(hit_item.tag.0) {
+                    if hit_item.tag.1 == EXT_SCROLL_ID_ROOT as u16 {
+                        self.scroll_offset = LayoutVector2D::new(
+                            (self.scroll_offset.x - delta.x as f32).max(0.0).min(
+                                (self.scroll_content_size.width - self.scroll_frame_size.width)
+                                    .max(0.0),
+                            ),
+                            (self.scroll_offset.y - delta.y as f32).max(0.0).min(
+                                (self.scroll_content_size.height - self.scroll_frame_size.height)
+                                    .max(0.0),
+                            ),
+                        );
+
+                        let mut txn = Transaction::new();
+
+                        txn.set_scroll_offsets(
+                            ExternalScrollId(EXT_SCROLL_ID_ROOT, PipelineId::dummy()),
+                            vec![SampledScrollOffset {
+                                offset: self.scroll_offset,
+                                generation: APZScrollGeneration::default(),
+                            }],
+                        );
+                        txn.generate_frame(0, RenderReasons::empty());
+                        wrapper
+                            .api
+                            .borrow_mut()
+                            .send_transaction(wrapper.document_id, txn);
+
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl WindowInitTrait for App {
@@ -150,12 +209,14 @@ impl WindowInitTrait for App {
         let over_color_animation = |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
             value.a = (to.a - from.a) * coef as f32 + from.a
         };
+        let window_size = wrapper.get_window_size();
 
         Box::new(Self {
             font: wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
             do_exit: false,
             do_redraw: true,
             mouse_position: None,
+            window_size: PhysicalSize::new(0, 0),
             over_states: HashSet::new(),
             close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
@@ -172,8 +233,13 @@ impl WindowInitTrait for App {
                 ColorF::new_u(50, 221, 23, 100),
                 over_color_animation,
             ),
-            resizing: None,
             scroll_offset: LayoutVector2D::zero(),
+            scroll_frame_size: LayoutSize::new(
+                window_size.width as f32 - 20.0,
+                window_size.height as f32 - 65.0,
+            ),
+            scroll_content_size: LayoutSize::zero(),
+            resizing: None,
         })
     }
 }
@@ -181,7 +247,14 @@ impl WindowInitTrait for App {
 impl WindowTrait for App {
     fn on_event(&mut self, event: Event, wrapper: &mut WindowWrapper) {
         match event {
-            Event::Resized(_) | Event::MouseEntered | Event::MouseLeft => {
+            Event::Resized(size) => {
+                self.window_size = size;
+                self.scroll_frame_size =
+                    LayoutSize::new(size.width as f32 - 20.0, size.height as f32 - 65.0);
+
+                self.calculate_event(wrapper, AppEventType::UpdateOverState);
+            }
+            Event::MouseEntered | Event::MouseLeft => {
                 self.calculate_event(wrapper, AppEventType::UpdateOverState);
             }
             Event::MousePressed(MouseButton::Left) => {
@@ -195,38 +268,7 @@ impl WindowTrait for App {
                 self.calculate_event(wrapper, AppEventType::UpdateOverState);
             }
             Event::MouseWheel(delta) => {
-                if let Some(mouse_position) = self.mouse_position {
-                    let hit_items = wrapper
-                        .api
-                        .borrow()
-                        .hit_test(
-                            wrapper.document_id,
-                            WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
-                        )
-                        .items;
-
-                    for hit_item in hit_items {
-                        if hit_item.tag.1 != 0 {
-                            let mut txn = Transaction::new();
-
-                            self.scroll_offset +=
-                                LayoutVector2D::new(delta.x as f32, delta.y as f32);
-
-                            txn.set_scroll_offsets(
-                                ExternalScrollId(hit_item.tag.1 as u64, PipelineId::dummy()),
-                                vec![SampledScrollOffset {
-                                    offset: self.scroll_offset,
-                                    generation: APZScrollGeneration::default(),
-                                }],
-                            );
-                            txn.generate_frame(0, RenderReasons::empty());
-                            wrapper
-                                .api
-                                .borrow_mut()
-                                .send_transaction(wrapper.document_id, txn);
-                        }
-                    }
-                }
+                self.calculate_wheel_scroll(delta, wrapper);
             }
             Event::DeviceMotion(delta) => {
                 self.update_window_resize(delta, wrapper);
@@ -259,18 +301,55 @@ impl WindowTrait for App {
         self.animate_title_bar(txn);
     }
 
-    fn redraw(&mut self, frame_builder: &mut FrameBuilder, wrapper: &mut WindowWrapper) {
-        let window_size = wrapper.get_window_size();
-
+    fn redraw(&mut self, frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper) {
         frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
-        self.draw_device_list(window_size, frame_builder, wrapper);
-        self.draw_title_bar("Device List", window_size, frame_builder, wrapper);
-        self.draw_window_resize(window_size, frame_builder);
+        self.scroll_content_size = self.calculate_device_list_size(self.scroll_frame_size);
+
+        // scroll farme / main frame
+        frame_builder.builder.push_simple_stacking_context(
+            LayoutPoint::new(10.0, 55.0),
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::IS_BACKFACE_VISIBLE,
+        );
+        frame_builder.builder.push_hit_test(
+            &CommonItemProperties::new(
+                LayoutRect::from_size(self.scroll_frame_size),
+                frame_builder.space_and_clip,
+            ),
+            (AppEvent::Scroll.into(), EXT_SCROLL_ID_ROOT as u16),
+        );
+
+        let spatial_id = frame_builder.builder.define_scroll_frame(
+            frame_builder.space_and_clip.spatial_id,
+            ExternalScrollId(EXT_SCROLL_ID_ROOT, PipelineId::dummy()),
+            LayoutRect::from_size(self.scroll_content_size),
+            LayoutRect::from_size(self.scroll_frame_size),
+            LayoutVector2D::zero(),
+            APZScrollGeneration::default(),
+            HasScrollLinkedEffect::No,
+            SpatialTreeItemKey::new(0, 0),
+        );
+        let clip_id = frame_builder.builder.define_clip_rect(
+            &frame_builder.space_and_clip,
+            LayoutRect::from_size(self.scroll_frame_size),
+        );
+        let space_and_clip = SpaceAndClipInfo {
+            spatial_id,
+            clip_id,
+        };
+
+        // draw the scroll frame content
+        self.draw_device_list(self.scroll_frame_size, frame_builder, space_and_clip);
+
+        frame_builder.builder.pop_stacking_context();
+
+        self.draw_title_bar("Device List", self.window_size, frame_builder);
+        self.draw_window_resize(self.window_size, frame_builder);
 
         frame_builder.builder.pop_stacking_context();
     }

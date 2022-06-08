@@ -387,17 +387,26 @@ impl Window {
                             WindowEvent::CursorLeft { .. } => {
                                 self.window.on_event(Event::MouseLeft, &mut self.wrapper)
                             }
-                            WindowEvent::MouseWheel { delta, .. } => self.window.on_event(
-                                Event::MouseWheel(match delta {
-                                    MouseScrollDelta::LineDelta(dx, dy) => {
-                                        PhysicalPosition::new(dx as f64, (dy * LINE_HEIGHT) as f64)
-                                    }
+                            WindowEvent::MouseWheel {
+                                delta, modifiers, ..
+                            } => {
+                                let mut delta = match delta {
+                                    MouseScrollDelta::LineDelta(dx, dy) => PhysicalPosition::new(
+                                        (dx * LINE_HEIGHT) as f64,
+                                        (dy * LINE_HEIGHT) as f64,
+                                    ),
                                     MouseScrollDelta::PixelDelta(pos) => {
                                         PhysicalPosition::new(pos.x, pos.y)
                                     }
-                                }),
-                                &mut self.wrapper,
-                            ),
+                                };
+
+                                if modifiers.shift() {
+                                    delta = PhysicalPosition::new(delta.y, delta.x);
+                                }
+
+                                self.window
+                                    .on_event(Event::MouseWheel(delta), &mut self.wrapper)
+                            }
                             WindowEvent::MouseInput { state, button, .. } => match state {
                                 ElementState::Pressed => self
                                     .window
