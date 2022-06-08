@@ -96,7 +96,7 @@ pub struct WindowWrapper {
     pub document_id: DocumentId,
     epoch: Epoch,
     pub api: Rc<RefCell<RenderApi>>,
-    pub global_state: Arc<GlobalState>,
+    pub global_state: Arc<dyn GlobalStateTrait>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
     device_size: DeviceIntSize,
 }
@@ -509,4 +509,10 @@ fn load_file(name: &str) -> Vec<u8> {
 
     file.read_to_end(&mut buffer).unwrap();
     buffer
+}
+
+pub trait GlobalStateTrait {
+    fn should_redraw(&self) -> bool;
+
+    fn request_redraw(&self);
 }

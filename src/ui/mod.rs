@@ -355,6 +355,7 @@ impl WindowTrait for App {
 
         frame_builder.builder.pop_stacking_context();
 
+        // draw main window elements
         self.draw_title_bar(self.document.get_title(), self.window_size, frame_builder);
         self.draw_window_resize(self.window_size, frame_builder);
 

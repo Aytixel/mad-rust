@@ -31,11 +31,5 @@ impl DocumentTrait for DeviceList {
         space_and_clip: SpaceAndClipInfo,
     ) {
         let builder = &mut frame_builder.builder;
-
-        builder.push_rect(
-            &CommonItemProperties::new(LayoutRect::from_size(frame_size), space_and_clip),
-            LayoutRect::from_size(frame_size),
-            ColorF::new(1.0, 1.0, 1.0, 1.0),
-        );
     }
 }

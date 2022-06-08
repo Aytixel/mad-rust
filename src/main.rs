@@ -10,7 +10,7 @@ use std::thread::ThreadId;
 
 use connection::Connection;
 use ui::App;
-use window::{Window, WindowOptions};
+use window::{GlobalStateTrait, Window, WindowOptions};
 
 use util::{
     connection::command::{DeviceConfigurationDescriptor, DeviceList},
@@ -49,12 +49,14 @@ impl GlobalState {
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
         })
     }
+}
 
-    pub fn should_redraw(&self) -> bool {
+impl GlobalStateTrait for GlobalState {
+    fn should_redraw(&self) -> bool {
         self.do_redraw.swap(false, Ordering::Relaxed)
     }
 
-    pub fn request_redraw(&self) {
+    fn request_redraw(&self) {
         self.do_redraw.store(true, Ordering::Relaxed);
     }
 }
