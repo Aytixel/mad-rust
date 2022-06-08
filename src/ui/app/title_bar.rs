@@ -121,7 +121,7 @@ impl App {
             builder,
             &wrapper.api.borrow(),
             title,
-            ColorF::new_u(255, 255, 255, 100),
+            ColorF::new_u(255, 255, 255, 200),
             LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
             None,
