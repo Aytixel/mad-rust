@@ -50,7 +50,7 @@ impl Font {
     pub fn push_text(
         &self,
         builder: &mut DisplayListBuilder,
-        text: &'static str,
+        text: String,
         color: ColorF,
         position: LayoutPoint,
         space_and_clip: SpaceAndClipInfo,
@@ -65,7 +65,7 @@ impl Font {
         let glyph_indices: Vec<u32> = self
             .api
             .borrow()
-            .get_glyph_indices(self.key, text)
+            .get_glyph_indices(self.key, text.as_str())
             .into_iter()
             .flatten()
             .collect();

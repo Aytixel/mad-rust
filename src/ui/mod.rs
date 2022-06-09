@@ -1,7 +1,7 @@
 mod app;
 mod device_list;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
@@ -60,7 +60,7 @@ pub enum AppEventType {
 }
 
 pub struct App {
-    font: Font,
+    font_hashmap: HashMap<&'static str, Font>,
     do_exit: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
     window_size: PhysicalSize<u32>,
@@ -217,9 +217,23 @@ impl WindowInitTrait<GlobalState> for App {
             value.a = (to.a - from.a) * coef as f32 + from.a
         };
         let window_size = wrapper.get_window_size();
+        let mut font_hashmap = HashMap::new();
+
+        font_hashmap.insert(
+            "OpenSans_15px",
+            wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
+        );
+        font_hashmap.insert(
+            "OpenSans_13px",
+            wrapper.load_font("OpenSans", Au::from_f32_px(13.0)),
+        );
+        font_hashmap.insert(
+            "OpenSans_10px",
+            wrapper.load_font("OpenSans", Au::from_f32_px(10.0)),
+        );
 
         Box::new(Self {
-            font: wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
+            font_hashmap,
             do_exit: false,
             mouse_position: None,
             window_size: PhysicalSize::new(0, 0),
@@ -355,6 +369,7 @@ impl WindowTrait<GlobalState> for App {
             self.scroll_frame_size,
             frame_builder,
             space_and_clip,
+            &self.font_hashmap,
             wrapper,
         );
 
@@ -368,7 +383,9 @@ impl WindowTrait<GlobalState> for App {
     }
 
     fn unload(&mut self) {
-        self.font.unload();
+        for font in self.font_hashmap.values_mut() {
+            font.unload();
+        }
     }
 }
 
@@ -388,6 +405,7 @@ pub trait DocumentTrait {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
+        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     );
 }

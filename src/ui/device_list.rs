@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::thread::ThreadId;
 use std::time::Duration;
 
-use crate::animation::{self, Animation, AnimationCurve};
+use crate::animation::{Animation, AnimationCurve};
 use crate::ui::DocumentTrait;
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt, LayoutRectExt};
-use crate::window::{FrameBuilder, WindowWrapper};
+use crate::window::{Font, FrameBuilder, WindowWrapper};
 use crate::GlobalState;
 
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
@@ -18,10 +18,11 @@ use webrender::Transaction;
 use super::AppEvent;
 
 pub struct DeviceList {
-    driver_animation_and_key_hashmap: HashMap<
+    driver_device_data_hashmap: HashMap<
         ThreadId,
         (
             bool,
+            String,
             HashMap<String, (bool, Animation<f32>, PropertyBindingKey<f32>)>,
         ),
     >,
@@ -30,7 +31,7 @@ pub struct DeviceList {
 impl DeviceList {
     pub fn new() -> Self {
         Self {
-            driver_animation_and_key_hashmap: HashMap::new(),
+            driver_device_data_hashmap: HashMap::new(),
         }
     }
 }
@@ -43,16 +44,14 @@ impl DocumentTrait for DeviceList {
     fn animate(&mut self, txn: &mut Transaction) {
         let mut floats = vec![];
 
-        for thread_id in self.driver_animation_and_key_hashmap.clone().keys() {
-            let (to_remove, animation_and_key_hashmap) = self
-                .driver_animation_and_key_hashmap
-                .get_mut(thread_id)
-                .unwrap();
+        for thread_id in self.driver_device_data_hashmap.clone().keys() {
+            let (to_remove, _, device_data_hashmap) =
+                self.driver_device_data_hashmap.get_mut(thread_id).unwrap();
             let mut has_update = false;
 
-            for serial_number in animation_and_key_hashmap.clone().keys() {
+            for serial_number in device_data_hashmap.clone().keys() {
                 let (to_remove, animation, key) =
-                    animation_and_key_hashmap.get_mut(serial_number).unwrap();
+                    device_data_hashmap.get_mut(serial_number).unwrap();
 
                 if animation.update() {
                     floats.push(PropertyValue {
@@ -63,13 +62,13 @@ impl DocumentTrait for DeviceList {
                     has_update = true;
                 } else if *to_remove {
                     // remove the device
-                    animation_and_key_hashmap.remove(serial_number);
+                    device_data_hashmap.remove(serial_number);
                 }
             }
 
             if !has_update && *to_remove {
                 // remove the driver
-                self.driver_animation_and_key_hashmap.remove(thread_id);
+                self.driver_device_data_hashmap.remove(thread_id);
             }
         }
 
@@ -93,22 +92,20 @@ impl DocumentTrait for DeviceList {
         };
 
         // mark to remove unused data
-        for thread_id in self.driver_animation_and_key_hashmap.clone().keys() {
+        for thread_id in self.driver_device_data_hashmap.clone().keys() {
             if driver_hashmap.contains_key(&thread_id) {
                 // only mark to remove devices
-                let (_, animation_and_key_hashmap) = self
-                    .driver_animation_and_key_hashmap
-                    .get_mut(&thread_id)
-                    .unwrap();
+                let (_, _, device_data_hashmap) =
+                    self.driver_device_data_hashmap.get_mut(&thread_id).unwrap();
 
-                for serial_number in animation_and_key_hashmap.clone().keys() {
+                for serial_number in device_data_hashmap.clone().keys() {
                     if !driver_hashmap[&thread_id]
                         .device_list
                         .serial_number_vec
                         .contains(serial_number)
                     {
                         let (to_remove, animation, _) =
-                            animation_and_key_hashmap.get_mut(serial_number).unwrap();
+                            device_data_hashmap.get_mut(serial_number).unwrap();
 
                         *to_remove = true;
                         animation.to(0.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
@@ -116,14 +113,12 @@ impl DocumentTrait for DeviceList {
                 }
             } else {
                 // mark to remove the entire driver
-                let (to_remove, animation_and_key_hashmap) = self
-                    .driver_animation_and_key_hashmap
-                    .get_mut(&thread_id)
-                    .unwrap();
+                let (to_remove, _, device_data_hashmap) =
+                    self.driver_device_data_hashmap.get_mut(&thread_id).unwrap();
 
                 *to_remove = true;
 
-                for (to_remove, animation, _) in animation_and_key_hashmap.values_mut() {
+                for (to_remove, animation, _) in device_data_hashmap.values_mut() {
                     *to_remove = true;
                     animation.to(0.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
                 }
@@ -132,14 +127,17 @@ impl DocumentTrait for DeviceList {
 
         // add new data
         for (thread_id, driver) in driver_hashmap.iter() {
-            let (_, animation_and_key_hashmap) = self
-                .driver_animation_and_key_hashmap
+            let (_, _, device_data_hashmap) = self
+                .driver_device_data_hashmap
                 .entry(*thread_id)
-                .or_insert((false, HashMap::new()));
+                .or_insert((
+                    false,
+                    driver.device_configuration_descriptor.device_name.clone(),
+                    HashMap::new(),
+                ));
 
             for serial_number in driver.device_list.serial_number_vec.clone() {
-                if let Some((to_remove, animation, _)) =
-                    animation_and_key_hashmap.get_mut(&serial_number)
+                if let Some((to_remove, animation, _)) = device_data_hashmap.get_mut(&serial_number)
                 {
                     // restore the old animation in case of reconnecting
                     *to_remove = false;
@@ -152,7 +150,7 @@ impl DocumentTrait for DeviceList {
                         });
 
                     animation.to(1.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
-                    animation_and_key_hashmap.insert(
+                    device_data_hashmap.insert(
                         serial_number,
                         (
                             false,
@@ -169,15 +167,16 @@ impl DocumentTrait for DeviceList {
 
     fn draw(
         &self,
-        frame_size: LayoutSize,
+        _frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
-        wrapper: &mut WindowWrapper<GlobalState>,
+        font_hashmap: &HashMap<&'static str, Font>,
+        _wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
 
-        for (_, animation_and_key_hashmap) in self.driver_animation_and_key_hashmap.values() {
-            for (_, animation, key) in animation_and_key_hashmap.values() {
+        for (_, device_name, device_data_hashmap) in self.driver_device_data_hashmap.values() {
+            for (serial_number, (_, animation, key)) in device_data_hashmap.iter() {
                 let device_button_layout_rect = LayoutRect::new_with_size(
                     LayoutPoint::new(0.0, 0.0),
                     LayoutSize::new(150.0, 150.0),
@@ -207,6 +206,28 @@ impl DocumentTrait for DeviceList {
                 builder.push_hit_test(
                     device_button_common_item_properties,
                     (AppEvent::CloseButton.into(), 0),
+                );
+                font_hashmap["OpenSans_13px"].push_text(
+                    builder,
+                    device_name
+                        .get(0..device_name.len().min(16))
+                        .unwrap_or_default()
+                        .to_string(),
+                    ColorF::new_u(255, 255, 255, 200),
+                    LayoutPoint::new(7.5, 7.5),
+                    space_and_clip,
+                    None,
+                );
+                font_hashmap["OpenSans_10px"].push_text(
+                    builder,
+                    serial_number
+                        .get(0..serial_number.len().min(21))
+                        .unwrap_or_default()
+                        .to_string(),
+                    ColorF::new_u(255, 255, 255, 100),
+                    LayoutPoint::new(7.5, 130.0),
+                    space_and_clip,
+                    None,
                 );
                 builder.pop_stacking_context();
             }

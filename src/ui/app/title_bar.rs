@@ -116,9 +116,9 @@ impl App {
         );
 
         // title
-        self.font.push_text(
+        self.font_hashmap["OpenSans_15px"].push_text(
             builder,
-            title,
+            title.to_string(),
             ColorF::new_u(255, 255, 255, 200),
             LayoutPoint::new(20.0, 17.0),
             frame_builder.space_and_clip,
