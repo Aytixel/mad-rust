@@ -134,7 +134,7 @@ impl App {
             &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip);
 
         builder.push_rounded_rect_with_animation(
-            &CommonItemProperties::new(close_button_layout_rect, frame_builder.space_and_clip),
+            &close_button_common_item_properties,
             PropertyBinding::Binding(
                 self.close_button_color_key,
                 self.close_button_color_animation.value,
