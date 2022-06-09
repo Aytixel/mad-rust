@@ -1,5 +1,6 @@
 use crate::ui::DocumentTrait;
-use crate::window::FrameBuilder;
+use crate::window::{FrameBuilder, WindowWrapper};
+use crate::GlobalState;
 
 use webrender::api::units::{LayoutRect, LayoutSize};
 use webrender::api::{ColorF, CommonItemProperties, SpaceAndClipInfo};
@@ -20,7 +21,11 @@ impl DocumentTrait for DeviceList {
 
     fn animate(&mut self, _txn: &mut Transaction) {}
 
-    fn calculate_size(&self, frame_size: LayoutSize) -> LayoutSize {
+    fn calculate_size(
+        &self,
+        frame_size: LayoutSize,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) -> LayoutSize {
         frame_size
     }
 
@@ -29,7 +34,13 @@ impl DocumentTrait for DeviceList {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
+        wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
+
+        let driver_hashmap = match wrapper.global_state.driver_hashmap_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
     }
 }

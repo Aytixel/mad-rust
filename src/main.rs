@@ -45,7 +45,7 @@ pub struct GlobalState {
 impl GlobalState {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            do_redraw: AtomicBool::new(false),
+            do_redraw: AtomicBool::new(true),
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
         })
     }

@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
+use crate::GlobalState;
 
 use glutin::dpi::PhysicalSize;
 use num::FromPrimitive;
@@ -61,7 +62,6 @@ pub enum AppEventType {
 pub struct App {
     font: Font,
     do_exit: bool,
-    do_redraw: bool,
     mouse_position: Option<PhysicalPosition<f64>>,
     window_size: PhysicalSize<u32>,
     over_states: HashSet<AppEvent>,
@@ -79,7 +79,11 @@ pub struct App {
 }
 
 impl App {
-    fn calculate_event(&mut self, wrapper: &mut WindowWrapper, target_event_type: AppEventType) {
+    fn calculate_event(
+        &mut self,
+        wrapper: &mut WindowWrapper<GlobalState>,
+        target_event_type: AppEventType,
+    ) {
         if let Some(mouse_position) = self.mouse_position {
             let hit_items = wrapper
                 .api
@@ -158,7 +162,7 @@ impl App {
     fn calculate_wheel_scroll(
         &mut self,
         delta: PhysicalPosition<f64>,
-        wrapper: &mut WindowWrapper,
+        wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         if let Some(mouse_position) = self.mouse_position {
             let hit_items = wrapper
@@ -207,8 +211,8 @@ impl App {
     }
 }
 
-impl WindowInitTrait for App {
-    fn new(wrapper: &mut WindowWrapper) -> Box<dyn WindowTrait> {
+impl WindowInitTrait<GlobalState> for App {
+    fn new(wrapper: &mut WindowWrapper<GlobalState>) -> Box<dyn WindowTrait<GlobalState>> {
         let over_color_animation = |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
             value.a = (to.a - from.a) * coef as f32 + from.a
         };
@@ -217,7 +221,6 @@ impl WindowInitTrait for App {
         Box::new(Self {
             font: wrapper.load_font("OpenSans", Au::from_f32_px(15.0)),
             do_exit: false,
-            do_redraw: true,
             mouse_position: None,
             window_size: PhysicalSize::new(0, 0),
             over_states: HashSet::new(),
@@ -248,8 +251,8 @@ impl WindowInitTrait for App {
     }
 }
 
-impl WindowTrait for App {
-    fn on_event(&mut self, event: Event, wrapper: &mut WindowWrapper) {
+impl WindowTrait<GlobalState> for App {
+    fn on_event(&mut self, event: Event, wrapper: &mut WindowWrapper<GlobalState>) {
         match event {
             Event::Resized(size) => {
                 self.window_size = size;
@@ -293,20 +296,16 @@ impl WindowTrait for App {
         self.do_exit
     }
 
-    fn should_redraw(&mut self) -> bool {
-        let value = self.do_redraw;
-
-        self.do_redraw = false;
-
-        value
-    }
-
     fn animate(&mut self, txn: &mut Transaction) {
         self.animate_title_bar(txn);
         self.document.animate(txn);
     }
 
-    fn redraw(&mut self, frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper) {
+    fn redraw(
+        &mut self,
+        frame_builder: &mut FrameBuilder,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
         frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min,
             frame_builder.space_and_clip.spatial_id,
@@ -314,7 +313,9 @@ impl WindowTrait for App {
         );
 
         // calcultate the scroll frame content size
-        self.scroll_content_size = self.document.calculate_size(self.scroll_frame_size);
+        self.scroll_content_size = self
+            .document
+            .calculate_size(self.scroll_frame_size, wrapper);
 
         // scroll frame / main frame
         frame_builder.builder.push_simple_stacking_context(
@@ -350,8 +351,12 @@ impl WindowTrait for App {
         };
 
         // draw the scroll frame content
-        self.document
-            .draw(self.scroll_frame_size, frame_builder, space_and_clip);
+        self.document.draw(
+            self.scroll_frame_size,
+            frame_builder,
+            space_and_clip,
+            wrapper,
+        );
 
         frame_builder.builder.pop_stacking_context();
 
@@ -372,12 +377,17 @@ pub trait DocumentTrait {
 
     fn animate(&mut self, txn: &mut Transaction);
 
-    fn calculate_size(&self, frame_size: LayoutSize) -> LayoutSize;
+    fn calculate_size(
+        &self,
+        frame_size: LayoutSize,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) -> LayoutSize;
 
     fn draw(
         &self,
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
+        wrapper: &mut WindowWrapper<GlobalState>,
     );
 }

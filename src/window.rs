@@ -17,8 +17,6 @@ pub use frame_builder::FrameBuilder;
 
 use notifier::Notifier;
 
-use crate::GlobalState;
-
 use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
@@ -86,7 +84,7 @@ impl WindowOptions {
     }
 }
 
-pub struct WindowWrapper {
+pub struct WindowWrapper<T: GlobalStateTrait> {
     pub title: &'static str,
     pub min_size: Option<PhysicalSize<u32>>,
     pub max_size: Option<PhysicalSize<u32>>,
@@ -96,12 +94,12 @@ pub struct WindowWrapper {
     pub document_id: DocumentId,
     epoch: Epoch,
     pub api: Rc<RefCell<RenderApi>>,
-    pub global_state: Arc<dyn GlobalStateTrait>,
+    pub global_state: Arc<T>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
     device_size: DeviceIntSize,
 }
 
-impl WindowWrapper {
+impl<T: GlobalStateTrait> WindowWrapper<T> {
     fn new(
         title: &'static str,
         min_size: Option<PhysicalSize<u32>>,
@@ -112,7 +110,7 @@ impl WindowWrapper {
         document_id: DocumentId,
         epoch: Epoch,
         mut api: RenderApi,
-        global_state: Arc<GlobalState>,
+        global_state: Arc<T>,
         font_key_hashmap: HashMap<&'static str, FontKey>,
     ) -> Self {
         let window_size = context.window().inner_size();
@@ -184,13 +182,13 @@ impl WindowWrapper {
         self.context.window().set_outer_position(position)
     }
 
-    fn redraw(&mut self, window: &mut Box<dyn WindowTrait>, force: bool) {
+    fn redraw(&mut self, window: &mut Box<dyn WindowTrait<T>>, force: bool) {
         let mut txn = Transaction::new();
 
         window.animate(&mut txn);
 
-        if window.should_redraw() || self.global_state.should_redraw() || force {
-            let mut frame_builder = FrameBuilder::new(self);
+        if self.global_state.should_redraw() || force {
+            let mut frame_builder = FrameBuilder::new::<T>(self);
 
             window.redraw(&mut frame_builder, self);
             txn.set_display_list(
@@ -204,7 +202,7 @@ impl WindowWrapper {
         if !txn.is_empty() {
             txn.generate_frame(
                 0,
-                if window.should_redraw() || force {
+                if self.global_state.should_redraw() || force {
                     RenderReasons::SCENE
                 } else {
                     RenderReasons::ANIMATED_PROPERTY
@@ -252,18 +250,14 @@ impl WindowWrapper {
     }
 }
 
-pub struct Window {
+pub struct Window<T: GlobalStateTrait> {
     event_loop: EventLoop<()>,
-    pub wrapper: WindowWrapper,
-    window: Box<dyn WindowTrait>,
+    pub wrapper: WindowWrapper<T>,
+    window: Box<dyn WindowTrait<T>>,
 }
 
-impl Window {
-    pub fn new(
-        window_options: WindowOptions,
-        global_state: Arc<GlobalState>,
-        clear_color: ColorF,
-    ) -> Self {
+impl<T: GlobalStateTrait> Window<T> {
+    pub fn new(window_options: WindowOptions, global_state: Arc<T>, clear_color: ColorF) -> Self {
         let event_loop = EventLoop::new();
         let window = DefaultWindow::new();
         let mut window_builder = WindowBuilder::new()
@@ -342,9 +336,10 @@ impl Window {
         }
     }
 
-    pub fn set_window<U: WindowInitTrait>(&mut self) {
+    pub fn set_window<U: WindowInitTrait<T>>(&mut self) {
         self.window.unload();
         self.window = U::new(&mut self.wrapper);
+        self.wrapper.global_state.request_redraw();
     }
 
     pub fn run(&mut self) {
@@ -471,24 +466,20 @@ impl Window {
     }
 }
 
-pub trait WindowInitTrait: WindowTrait {
-    fn new(wrapper: &mut WindowWrapper) -> Box<dyn WindowTrait>;
+pub trait WindowInitTrait<T: GlobalStateTrait>: WindowTrait<T> {
+    fn new(wrapper: &mut WindowWrapper<T>) -> Box<dyn WindowTrait<T>>;
 }
 
-pub trait WindowTrait {
-    fn on_event(&mut self, _event: Event, _wrapper: &mut WindowWrapper) {}
+pub trait WindowTrait<T: GlobalStateTrait> {
+    fn on_event(&mut self, _event: Event, _wrapper: &mut WindowWrapper<T>) {}
 
     fn should_exit(&self) -> bool {
         false
     }
 
-    fn should_redraw(&mut self) -> bool {
-        false
-    }
-
     fn animate(&mut self, _txn: &mut Transaction) {}
 
-    fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper) {}
+    fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper<T>) {}
 
     fn unload(&mut self) {}
 }
@@ -501,7 +492,7 @@ impl DefaultWindow {
     }
 }
 
-impl WindowTrait for DefaultWindow {}
+impl<T: GlobalStateTrait> WindowTrait<T> for DefaultWindow {}
 
 fn load_file(name: &str) -> Vec<u8> {
     let mut file = File::open(name).unwrap();

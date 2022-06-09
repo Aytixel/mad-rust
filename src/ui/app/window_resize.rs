@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::ui::{App, AppEvent};
 use crate::window::ext::LayoutRectExt;
 use crate::window::{FrameBuilder, WindowWrapper};
+use crate::GlobalState;
 
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
@@ -15,7 +16,7 @@ impl App {
     pub fn update_window_resize_cursor_icon(
         &self,
         new_over_state: &HashSet<AppEvent>,
-        wrapper: &mut WindowWrapper,
+        wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         if let None = self.resizing {
             let test_cursor = |event: &AppEvent, cursor: CursorIcon| -> bool {
@@ -46,7 +47,11 @@ impl App {
         }
     }
 
-    pub fn update_window_resize(&self, delta: PhysicalPosition<f64>, wrapper: &mut WindowWrapper) {
+    pub fn update_window_resize(
+        &self,
+        delta: PhysicalPosition<f64>,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
         if let Some(event) = self.resizing.clone() {
             let window_size = wrapper.get_window_size();
             let window_position = wrapper.get_window_position();

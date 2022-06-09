@@ -2,7 +2,7 @@ use webrender::api::units::{DeviceIntSize, LayoutRect, LayoutSize};
 use webrender::api::{DisplayListBuilder, SpaceAndClipInfo};
 use webrender::euclid::Scale;
 
-use super::WindowWrapper;
+use super::{GlobalStateTrait, WindowWrapper};
 
 pub struct FrameBuilder {
     pub layout_size: LayoutSize,
@@ -12,7 +12,7 @@ pub struct FrameBuilder {
 }
 
 impl FrameBuilder {
-    pub fn new(window: &mut WindowWrapper) -> Self {
+    pub fn new<T: GlobalStateTrait>(window: &mut WindowWrapper<T>) -> Self {
         let window_size = window.get_window_size();
 
         window.device_size =
