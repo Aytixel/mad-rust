@@ -378,7 +378,7 @@ pub trait DocumentTrait {
     fn animate(&mut self, txn: &mut Transaction);
 
     fn calculate_size(
-        &self,
+        &mut self,
         frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize;

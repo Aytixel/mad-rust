@@ -1,6 +1,7 @@
 use std::f64::consts::PI;
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct AnimationCurve {
     curve: fn(f64) -> f64,
 }
@@ -19,6 +20,8 @@ impl AnimationCurve {
         curve: |coef: f64| -((PI * coef).cos() - 1.0) / 2.0,
     };
 }
+
+#[derive(Clone)]
 pub struct Animation<T: Clone + PartialEq> {
     from: T,
     to: T,
