@@ -6,8 +6,6 @@ mod notifier;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,7 +50,7 @@ pub enum Event {
 pub struct WindowOptions {
     pub title: &'static str,
     pub size: PhysicalSize<u32>,
-    pub icon: Option<&'static str>,
+    pub icon: &'static [u8],
     pub min_size: Option<PhysicalSize<u32>>,
     pub max_size: Option<PhysicalSize<u32>>,
     pub position: Option<PhysicalPosition<i32>>,
@@ -66,7 +64,7 @@ pub struct WindowOptions {
 }
 
 impl WindowOptions {
-    pub fn new(title: &'static str, width: u32, height: u32, icon: Option<&'static str>) -> Self {
+    pub fn new(title: &'static str, width: u32, height: u32, icon: &'static [u8]) -> Self {
         Self {
             title,
             size: PhysicalSize::new(width, height),
@@ -233,11 +231,11 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
         }
     }
 
-    pub fn load_font_file(&mut self, name: &'static str, pathname: &str) {
+    pub fn load_font_file(&mut self, name: &'static str, data: &'static [u8]) {
         let mut txn = Transaction::new();
 
         let font_key = self.api.borrow().generate_font_key();
-        txn.add_raw_font(font_key, load_file(pathname), 0);
+        txn.add_raw_font(font_key, data.to_vec(), 0);
 
         self.font_key_hashmap.insert(name, font_key);
 
@@ -287,11 +285,9 @@ impl<T: GlobalStateTrait> Window<T> {
             .with_visible(window_options.visible)
             .with_transparent(window_options.transparent)
             .with_decorations(window_options.decorations)
-            .with_always_on_top(window_options.always_on_top);
+            .with_always_on_top(window_options.always_on_top)
+            .with_window_icon(Self::load_icon(window_options.icon));
 
-        if let Some(pathname) = window_options.icon {
-            window_builder = window_builder.with_window_icon(Self::load_icon(pathname));
-        }
         if let Some(min_size) = window_options.min_size {
             window_builder = window_builder.with_min_inner_size(min_size);
         }
@@ -499,8 +495,8 @@ impl<T: GlobalStateTrait> Window<T> {
         self.wrapper.unload_fonts();
     }
 
-    fn load_icon(pathname: &'static str) -> Option<Icon> {
-        let decoder = Decoder::new(File::open(pathname).unwrap());
+    fn load_icon(data: &'static [u8]) -> Option<Icon> {
+        let decoder = Decoder::new(data);
         let mut reader = decoder.read_info().unwrap();
         let mut buf = vec![0; reader.output_buffer_size()];
         let info = reader.next_frame(&mut buf).unwrap();
@@ -551,14 +547,6 @@ impl DefaultWindow {
 }
 
 impl<T: GlobalStateTrait> WindowTrait<T> for DefaultWindow {}
-
-fn load_file(name: &str) -> Vec<u8> {
-    let mut file = File::open(name).unwrap();
-    let mut buffer = vec![];
-
-    file.read_to_end(&mut buffer).unwrap();
-    buffer
-}
 
 pub trait GlobalStateTrait {
     fn should_redraw(&self) -> bool;

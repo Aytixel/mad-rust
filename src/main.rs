@@ -68,7 +68,8 @@ fn main() {
 
         connection.run();
 
-        let mut window_options = WindowOptions::new("Mad rust", 1080, 720, Some("./ui/icon.png"));
+        let mut window_options =
+            WindowOptions::new("Mad rust", 1080, 720, include_bytes!("../ui/icon.png"));
 
         window_options.transparent = true;
         window_options.decorations = false;
@@ -95,7 +96,7 @@ fn main() {
 
         window
             .wrapper
-            .load_font_file("OpenSans", "./ui/font/OpenSans.ttf");
+            .load_font_file("OpenSans", include_bytes!("../ui/font/OpenSans.ttf"));
         window.set_window::<App>();
         window.run();
         window.deinit();
