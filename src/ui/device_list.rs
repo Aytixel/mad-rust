@@ -168,10 +168,12 @@ impl DocumentTrait for DeviceList {
             }
         }
 
-        LayoutSize::new(
-            driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
-            max_device_count as f32 * 160.0 - 10.0,
-        )
+        // LayoutSize::new(
+        //     driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
+        //     max_device_count as f32 * 160.0 - 10.0,
+        // )
+
+        LayoutSize::new(2000.0, 2000.0)
     }
 
     fn draw(

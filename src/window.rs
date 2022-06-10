@@ -11,6 +11,7 @@ use std::io::Read;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 
 pub use font::Font;
 pub use frame_builder::FrameBuilder;
@@ -21,8 +22,8 @@ use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use png::{ColorType, Decoder};
 use util::time::Timer;
-use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize};
-use webrender::api::{ColorF, DocumentId, Epoch, FontKey, PipelineId, RenderReasons};
+use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, WorldPoint};
+use webrender::api::{ColorF, DocumentId, Epoch, FontKey, HitTestItem, PipelineId, RenderReasons};
 use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -37,8 +38,8 @@ const LINE_HEIGHT: f32 = 21.0;
 
 #[derive(Clone, Copy)]
 pub enum Event {
-    Resized(PhysicalSize<u32>),
-    MousePosition(PhysicalPosition<f64>),
+    Resized,
+    MousePosition,
     MouseWheel(PhysicalPosition<f64>),
     MousePressed(MouseButton),
     MouseReleased(MouseButton),
@@ -96,7 +97,8 @@ pub struct WindowWrapper<T: GlobalStateTrait> {
     pub api: Rc<RefCell<RenderApi>>,
     pub global_state: Arc<T>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
-    device_size: DeviceIntSize,
+    pub window_size: PhysicalSize<u32>,
+    pub mouse_position: Option<PhysicalPosition<f64>>,
 }
 
 impl<T: GlobalStateTrait> WindowWrapper<T> {
@@ -132,7 +134,8 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
             api: Rc::new(RefCell::new(api)),
             font_key_hashmap,
             global_state,
-            device_size: DeviceIntSize::new(window_size.width as i32, window_size.height as i32),
+            window_size,
+            mouse_position: None,
         }
     }
 
@@ -180,6 +183,21 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
 
     pub fn set_window_position(&self, position: PhysicalPosition<i32>) {
         self.context.window().set_outer_position(position)
+    }
+
+    fn do_hit_test(&self) -> Vec<HitTestItem> {
+        match self.mouse_position {
+            Some(mouse_position) => {
+                self.api
+                    .borrow()
+                    .hit_test(
+                        self.document_id,
+                        WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
+                    )
+                    .items
+            }
+            None => vec![],
+        }
     }
 
     fn redraw(&mut self, window: &mut Box<dyn WindowTrait<T>>, force: bool) {
@@ -359,28 +377,50 @@ impl<T: GlobalStateTrait> Window<T> {
                             self.wrapper.renderer.update();
                             self.wrapper
                                 .renderer
-                                .render(self.wrapper.device_size, 0)
+                                .render(
+                                    DeviceIntSize::new(
+                                        self.wrapper.window_size.width as i32,
+                                        self.wrapper.window_size.height as i32,
+                                    ),
+                                    0,
+                                )
                                 .unwrap();
                             self.wrapper.context.swap_buffers().ok();
                         }
                         winit::event::Event::WindowEvent { event, .. } => match event {
                             WindowEvent::Resized(size) => {
-                                self.window
-                                    .on_event(Event::Resized(size), &mut self.wrapper);
+                                self.wrapper.window_size = size;
+                                self.window.on_event(
+                                    Event::Resized,
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                );
                                 self.wrapper.update_window_size(size);
                                 self.wrapper.redraw(&mut self.window, true);
                             }
                             WindowEvent::CloseRequested => {
                                 exit = true;
                             }
-                            WindowEvent::CursorMoved { position, .. } => self
-                                .window
-                                .on_event(Event::MousePosition(position), &mut self.wrapper),
-                            WindowEvent::CursorEntered { .. } => {
-                                self.window.on_event(Event::MouseEntered, &mut self.wrapper)
+                            WindowEvent::CursorMoved { position, .. } => {
+                                self.wrapper.mouse_position = Some(position);
+                                self.window.on_event(
+                                    Event::MousePosition,
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                );
                             }
+                            WindowEvent::CursorEntered { .. } => self.window.on_event(
+                                Event::MouseEntered,
+                                self.wrapper.do_hit_test(),
+                                &mut self.wrapper,
+                            ),
                             WindowEvent::CursorLeft { .. } => {
-                                self.window.on_event(Event::MouseLeft, &mut self.wrapper)
+                                self.wrapper.mouse_position = None;
+                                self.window.on_event(
+                                    Event::MouseLeft,
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                )
                             }
                             WindowEvent::MouseWheel {
                                 delta, modifiers, ..
@@ -399,16 +439,23 @@ impl<T: GlobalStateTrait> Window<T> {
                                     delta = PhysicalPosition::new(delta.y, delta.x);
                                 }
 
-                                self.window
-                                    .on_event(Event::MouseWheel(delta), &mut self.wrapper)
+                                self.window.on_event(
+                                    Event::MouseWheel(delta),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                )
                             }
                             WindowEvent::MouseInput { state, button, .. } => match state {
-                                ElementState::Pressed => self
-                                    .window
-                                    .on_event(Event::MousePressed(button), &mut self.wrapper),
-                                ElementState::Released => self
-                                    .window
-                                    .on_event(Event::MouseReleased(button), &mut self.wrapper),
+                                ElementState::Pressed => self.window.on_event(
+                                    Event::MousePressed(button),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                ),
+                                ElementState::Released => self.window.on_event(
+                                    Event::MouseReleased(button),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                ),
                             },
                             _ => {}
                         },
@@ -418,9 +465,11 @@ impl<T: GlobalStateTrait> Window<T> {
                                 device_motion.y += delta.1;
                             }
                             DeviceEvent::Button { button, state } => match state {
-                                ElementState::Released => self
-                                    .window
-                                    .on_event(Event::DeviceReleased(button), &mut self.wrapper),
+                                ElementState::Released => self.window.on_event(
+                                    Event::DeviceReleased(button),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                ),
                                 _ => {}
                             },
                             _ => {}
@@ -430,8 +479,11 @@ impl<T: GlobalStateTrait> Window<T> {
                 });
 
             if device_motion.x != 0.0 || device_motion.y != 0.0 {
-                self.window
-                    .on_event(Event::DeviceMotion(device_motion), &mut self.wrapper);
+                self.window.on_event(
+                    Event::DeviceMotion(device_motion),
+                    self.wrapper.do_hit_test(),
+                    &mut self.wrapper,
+                );
             }
 
             if exit || self.window.should_exit() {
@@ -471,7 +523,13 @@ pub trait WindowInitTrait<T: GlobalStateTrait>: WindowTrait<T> {
 }
 
 pub trait WindowTrait<T: GlobalStateTrait> {
-    fn on_event(&mut self, _event: Event, _wrapper: &mut WindowWrapper<T>) {}
+    fn on_event(
+        &mut self,
+        _event: Event,
+        _hit_items: Vec<HitTestItem>,
+        _wrapper: &mut WindowWrapper<T>,
+    ) {
+    }
 
     fn should_exit(&self) -> bool {
         false

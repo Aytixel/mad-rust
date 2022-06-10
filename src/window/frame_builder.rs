@@ -12,16 +12,15 @@ pub struct FrameBuilder {
 }
 
 impl FrameBuilder {
-    pub fn new<T: GlobalStateTrait>(window: &mut WindowWrapper<T>) -> Self {
-        let window_size = window.get_window_size();
-
-        window.device_size =
-            DeviceIntSize::new(window_size.width as i32, window_size.height as i32);
-
-        let layout_size =
-            window.device_size.to_f32() / Scale::new(window.context.window().scale_factor() as f32);
-        let mut builder = DisplayListBuilder::new(window.pipeline_id);
-        let space_and_clip = SpaceAndClipInfo::root_scroll(window.pipeline_id);
+    pub fn new<T: GlobalStateTrait>(wrapper: &mut WindowWrapper<T>) -> Self {
+        let layout_size = DeviceIntSize::new(
+            wrapper.window_size.width as i32,
+            wrapper.window_size.height as i32,
+        )
+        .to_f32()
+            / Scale::new(wrapper.context.window().scale_factor() as f32);
+        let mut builder = DisplayListBuilder::new(wrapper.pipeline_id);
+        let space_and_clip = SpaceAndClipInfo::root_scroll(wrapper.pipeline_id);
         let bounds = LayoutRect::from_size(layout_size);
 
         builder.begin();

@@ -8,14 +8,13 @@ use crate::window::ext::ColorFTrait;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
 use crate::GlobalState;
 
-use glutin::dpi::PhysicalSize;
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
-use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D, WorldPoint};
+use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
     APZScrollGeneration, ColorF, CommonItemProperties, ExternalScrollId, HasScrollLinkedEffect,
-    PipelineId, PrimitiveFlags, PropertyBindingKey, RenderReasons, SampledScrollOffset,
-    SpaceAndClipInfo, SpatialTreeItemKey,
+    HitTestItem, PipelineId, PrimitiveFlags, PropertyBindingKey, RenderReasons,
+    SampledScrollOffset, SpaceAndClipInfo, SpatialTreeItemKey,
 };
 use webrender::Transaction;
 use winit::dpi::PhysicalPosition;
@@ -52,18 +51,14 @@ impl AppEvent {
     }
 }
 
-#[derive(Clone, Debug)]
 pub enum AppEventType {
     MousePressed,
     MouseReleased,
-    UpdateOverState,
 }
 
 pub struct App {
     font_hashmap: HashMap<&'static str, Font>,
     do_exit: bool,
-    mouse_position: Option<PhysicalPosition<f64>>,
-    window_size: PhysicalSize<u32>,
     over_states: HashSet<AppEvent>,
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
@@ -81,130 +76,109 @@ pub struct App {
 impl App {
     fn calculate_event(
         &mut self,
+        hit_items: Vec<HitTestItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
-        if let Some(mouse_position) = self.mouse_position {
-            let hit_items = wrapper
-                .api
-                .borrow()
-                .hit_test(
-                    wrapper.document_id,
-                    WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
-                )
-                .items;
-
-            if !hit_items.is_empty() {
-                // event processing
-                if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
-                    match target_event_type {
-                        AppEventType::MousePressed => match event {
-                            AppEvent::TitleBar => wrapper.context.window().drag_window().unwrap(),
-                            AppEvent::WindowResizeTopLeft
-                            | AppEvent::WindowResizeTopRight
-                            | AppEvent::WindowResizeTop
-                            | AppEvent::WindowResizeBottomLeft
-                            | AppEvent::WindowResizeBottomRight
-                            | AppEvent::WindowResizeBottom
-                            | AppEvent::WindowResizeLeft
-                            | AppEvent::WindowResizeRight => self.resizing = Some(event.clone()),
-                            _ => {}
-                        },
-                        AppEventType::MouseReleased => match event {
-                            AppEvent::CloseButton => self.do_exit = true,
-                            AppEvent::MaximizeButton => wrapper
-                                .context
-                                .window()
-                                .set_maximized(!wrapper.context.window().is_maximized()),
-                            AppEvent::MinimizeButton => {
-                                wrapper.context.window().set_minimized(true)
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    }
-                }
-            }
-
-            // over states processing
-            let mut new_over_state = HashSet::new();
-
-            for hit_item in hit_items {
-                if let Some(event) = AppEvent::from(hit_item.tag.0) {
-                    if let AppEventType::UpdateOverState = target_event_type {
-                        if let AppEvent::WindowResizeTopLeft
+        if !hit_items.is_empty() {
+            if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
+                match target_event_type {
+                    AppEventType::MousePressed => match event {
+                        AppEvent::TitleBar => wrapper.context.window().drag_window().unwrap(),
+                        AppEvent::WindowResizeTopLeft
                         | AppEvent::WindowResizeTopRight
                         | AppEvent::WindowResizeTop
                         | AppEvent::WindowResizeBottomLeft
                         | AppEvent::WindowResizeBottomRight
                         | AppEvent::WindowResizeBottom
                         | AppEvent::WindowResizeLeft
-                        | AppEvent::WindowResizeRight
-                        | AppEvent::CloseButton
-                        | AppEvent::MaximizeButton
-                        | AppEvent::MinimizeButton = event
-                        {
-                            new_over_state.insert(event);
-                        }
-                    }
+                        | AppEvent::WindowResizeRight => self.resizing = Some(event.clone()),
+                        _ => {}
+                    },
+                    AppEventType::MouseReleased => match event {
+                        AppEvent::CloseButton => self.do_exit = true,
+                        AppEvent::MaximizeButton => wrapper
+                            .context
+                            .window()
+                            .set_maximized(!wrapper.context.window().is_maximized()),
+                        AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
+                        _ => {}
+                    },
                 }
             }
-
-            if self.over_states != new_over_state {
-                self.update_title_bar_over_state(&new_over_state);
-            }
-
-            self.update_window_resize_cursor_icon(&new_over_state, wrapper);
-            self.over_states = new_over_state;
         }
+    }
+
+    fn update_over_states(
+        &mut self,
+        hit_items: Vec<HitTestItem>,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
+        let mut new_over_state = HashSet::new();
+
+        for hit_item in hit_items {
+            if let Some(event) = AppEvent::from(hit_item.tag.0) {
+                if let AppEvent::WindowResizeTopLeft
+                | AppEvent::WindowResizeTopRight
+                | AppEvent::WindowResizeTop
+                | AppEvent::WindowResizeBottomLeft
+                | AppEvent::WindowResizeBottomRight
+                | AppEvent::WindowResizeBottom
+                | AppEvent::WindowResizeLeft
+                | AppEvent::WindowResizeRight
+                | AppEvent::CloseButton
+                | AppEvent::MaximizeButton
+                | AppEvent::MinimizeButton = event
+                {
+                    new_over_state.insert(event);
+                }
+            }
+        }
+
+        if self.over_states != new_over_state {
+            self.update_title_bar_over_state(&new_over_state);
+        }
+
+        self.update_window_resize_cursor_icon(&new_over_state, wrapper);
+        self.over_states = new_over_state;
     }
 
     fn calculate_wheel_scroll(
         &mut self,
         delta: PhysicalPosition<f64>,
+        hit_items: Vec<HitTestItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
-        if let Some(mouse_position) = self.mouse_position {
-            let hit_items = wrapper
-                .api
-                .borrow()
-                .hit_test(
-                    wrapper.document_id,
-                    WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
-                )
-                .items;
+        for hit_item in hit_items {
+            if let Some(AppEvent::Scroll) = AppEvent::from(hit_item.tag.0) {
+                if hit_item.tag.1 == EXT_SCROLL_ID_ROOT as u16 {
+                    self.scroll_offset = LayoutVector2D::new(
+                        (self.scroll_offset.x - delta.x as f32).max(0.0).min(
+                            (self.scroll_content_size.width - self.scroll_frame_size.width)
+                                .max(0.0),
+                        ),
+                        (self.scroll_offset.y - delta.y as f32).max(0.0).min(
+                            (self.scroll_content_size.height - self.scroll_frame_size.height)
+                                .max(0.0),
+                        ),
+                    );
 
-            for hit_item in hit_items {
-                if let Some(AppEvent::Scroll) = AppEvent::from(hit_item.tag.0) {
-                    if hit_item.tag.1 == EXT_SCROLL_ID_ROOT as u16 {
-                        self.scroll_offset = LayoutVector2D::new(
-                            (self.scroll_offset.x - delta.x as f32).max(0.0).min(
-                                (self.scroll_content_size.width - self.scroll_frame_size.width)
-                                    .max(0.0),
-                            ),
-                            (self.scroll_offset.y - delta.y as f32).max(0.0).min(
-                                (self.scroll_content_size.height - self.scroll_frame_size.height)
-                                    .max(0.0),
-                            ),
-                        );
+                    let mut txn = Transaction::new();
 
-                        let mut txn = Transaction::new();
+                    txn.set_scroll_offsets(
+                        ExternalScrollId(EXT_SCROLL_ID_ROOT, PipelineId::dummy()),
+                        vec![SampledScrollOffset {
+                            offset: self.scroll_offset,
+                            generation: APZScrollGeneration::default(),
+                        }],
+                    );
+                    txn.generate_frame(0, RenderReasons::empty());
+                    wrapper
+                        .api
+                        .borrow_mut()
+                        .send_transaction(wrapper.document_id, txn);
 
-                        txn.set_scroll_offsets(
-                            ExternalScrollId(EXT_SCROLL_ID_ROOT, PipelineId::dummy()),
-                            vec![SampledScrollOffset {
-                                offset: self.scroll_offset,
-                                generation: APZScrollGeneration::default(),
-                            }],
-                        );
-                        txn.generate_frame(0, RenderReasons::empty());
-                        wrapper
-                            .api
-                            .borrow_mut()
-                            .send_transaction(wrapper.document_id, txn);
-
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -235,8 +209,6 @@ impl WindowInitTrait<GlobalState> for App {
         Box::new(Self {
             font_hashmap,
             do_exit: false,
-            mouse_position: None,
-            window_size: PhysicalSize::new(0, 0),
             over_states: HashSet::new(),
             close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
@@ -266,30 +238,35 @@ impl WindowInitTrait<GlobalState> for App {
 }
 
 impl WindowTrait<GlobalState> for App {
-    fn on_event(&mut self, event: Event, wrapper: &mut WindowWrapper<GlobalState>) {
+    fn on_event(
+        &mut self,
+        event: Event,
+        hit_items: Vec<HitTestItem>,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
         match event {
-            Event::Resized(size) => {
-                self.window_size = size;
-                self.scroll_frame_size =
-                    LayoutSize::new(size.width as f32 - 20.0, size.height as f32 - 65.0);
+            Event::Resized => {
+                self.scroll_frame_size = LayoutSize::new(
+                    wrapper.window_size.width as f32 - 20.0,
+                    wrapper.window_size.height as f32 - 65.0,
+                );
 
-                self.calculate_event(wrapper, AppEventType::UpdateOverState);
+                self.update_over_states(hit_items, wrapper);
             }
             Event::MouseEntered | Event::MouseLeft => {
-                self.calculate_event(wrapper, AppEventType::UpdateOverState);
+                self.update_over_states(hit_items, wrapper);
             }
             Event::MousePressed(MouseButton::Left) => {
-                self.calculate_event(wrapper, AppEventType::MousePressed);
+                self.calculate_event(hit_items, wrapper, AppEventType::MousePressed);
             }
             Event::MouseReleased(MouseButton::Left) => {
-                self.calculate_event(wrapper, AppEventType::MouseReleased);
+                self.calculate_event(hit_items, wrapper, AppEventType::MouseReleased);
             }
-            Event::MousePosition(position) => {
-                self.mouse_position = Some(position);
-                self.calculate_event(wrapper, AppEventType::UpdateOverState);
+            Event::MousePosition => {
+                self.update_over_states(hit_items, wrapper);
             }
             Event::MouseWheel(delta) => {
-                self.calculate_wheel_scroll(delta, wrapper);
+                self.calculate_wheel_scroll(delta, hit_items, wrapper);
             }
             Event::DeviceMotion(delta) => {
                 self.update_window_resize(delta, wrapper);
@@ -299,7 +276,7 @@ impl WindowTrait<GlobalState> for App {
                 if button == 1 {
                     self.resizing = None;
 
-                    self.calculate_event(wrapper, AppEventType::UpdateOverState);
+                    self.update_over_states(hit_items, wrapper);
                 }
             }
             _ => {}
@@ -376,8 +353,12 @@ impl WindowTrait<GlobalState> for App {
         frame_builder.builder.pop_stacking_context();
 
         // draw main window elements
-        self.draw_title_bar(self.document.get_title(), self.window_size, frame_builder);
-        self.draw_window_resize(self.window_size, frame_builder);
+        self.draw_title_bar(
+            self.document.get_title(),
+            wrapper.window_size,
+            frame_builder,
+        );
+        self.draw_window_resize(wrapper.window_size, frame_builder);
 
         frame_builder.builder.pop_stacking_context();
     }
