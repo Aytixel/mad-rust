@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::animation::{Animation, AnimationCurve};
 use crate::ui::DocumentTrait;
-use crate::window::ext::{ColorFTrait, DisplayListBuilderExt, LayoutRectExt};
+use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, WindowWrapper};
 use crate::GlobalState;
 
@@ -194,7 +194,7 @@ impl DocumentTrait for DeviceList {
             {
                 let device_button_layout_point =
                     LayoutPoint::new(device_index as f32 * 160.0, driver_index as f32 * 160.0);
-                let device_button_layout_rect = LayoutRect::new_with_size(
+                let device_button_layout_rect = LayoutRect::from_origin_and_size(
                     device_button_layout_point,
                     LayoutSize::new(150.0, 150.0),
                 );

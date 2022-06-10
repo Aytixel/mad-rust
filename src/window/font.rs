@@ -8,8 +8,6 @@ use webrender::api::{
 };
 use webrender::render_api::{RenderApi, Transaction};
 
-use super::ext::LayoutRectExt;
-
 pub struct Font {
     pub instance_key: FontInstanceKey,
     pub key: FontKey,
@@ -128,7 +126,8 @@ impl Font {
 
         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
 
-        let text_bounds = LayoutRect::new_with_size(position, glyph_size.to_vector().to_size());
+        let text_bounds =
+            LayoutRect::from_origin_and_size(position, glyph_size.to_vector().to_size());
 
         builder.push_text(
             &CommonItemProperties::new(text_bounds, space_and_clip),

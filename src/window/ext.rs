@@ -1,4 +1,4 @@
-use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
+use webrender::api::units::{LayoutSize};
 use webrender::api::{
     BorderRadius, ClipId, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion,
     DisplayListBuilder, PropertyBinding, SpaceAndClipInfo,
@@ -105,15 +105,5 @@ impl BorderRadiusExt for BorderRadius {
             bottom_left: LayoutSize::new(bottom_left, bottom_left),
             bottom_right: LayoutSize::new(bottom_right, bottom_right),
         }
-    }
-}
-
-pub trait LayoutRectExt {
-    fn new_with_size(position: LayoutPoint, size: LayoutSize) -> LayoutRect;
-}
-
-impl LayoutRectExt for LayoutRect {
-    fn new_with_size(position: LayoutPoint, size: LayoutSize) -> LayoutRect {
-        LayoutRect::new(position, position + size)
     }
 }

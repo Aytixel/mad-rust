@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use crate::ui::{App, AppEvent};
-use crate::window::ext::LayoutRectExt;
 use crate::window::{FrameBuilder, WindowWrapper};
 use crate::GlobalState;
 
@@ -114,7 +113,7 @@ impl App {
         let clip_id = builder.define_clip_rounded_rect(
             &frame_builder.space_and_clip,
             ComplexClipRegion::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(5.0, 5.0),
                     LayoutSize::new(
                         window_size.width as f32 - 10.0,
@@ -132,7 +131,7 @@ impl App {
 
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(20.0, 0.0),
                     LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
                 ),
@@ -142,7 +141,7 @@ impl App {
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(20.0, window_size.height as f32 - 5.0),
                     LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
                 ),
@@ -152,7 +151,7 @@ impl App {
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(0.0, 20.0),
                     LayoutSize::new(5.0, window_size.height as f32 - 40.0),
                 ),
@@ -162,7 +161,7 @@ impl App {
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(window_size.width as f32 - 5.0, 20.0),
                     LayoutSize::new(5.0, window_size.height as f32 - 40.0),
                 ),
@@ -174,14 +173,17 @@ impl App {
         // corners
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(LayoutPoint::new(0.0, 0.0), LayoutSize::new(20.0, 20.0)),
+                LayoutRect::from_origin_and_size(
+                    LayoutPoint::new(0.0, 0.0),
+                    LayoutSize::new(20.0, 20.0),
+                ),
                 space_and_clip,
             ),
             (AppEvent::WindowResizeTopLeft.into(), 0),
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(window_size.width as f32 - 20.0, 0.0),
                     LayoutSize::new(20.0, 20.0),
                 ),
@@ -191,7 +193,7 @@ impl App {
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(0.0, window_size.height as f32 - 20.0),
                     LayoutSize::new(20.0, 20.0),
                 ),
@@ -201,7 +203,7 @@ impl App {
         );
         builder.push_hit_test(
             &CommonItemProperties::new(
-                LayoutRect::new_with_size(
+                LayoutRect::from_origin_and_size(
                     LayoutPoint::new(
                         window_size.width as f32 - 20.0,
                         window_size.height as f32 - 20.0,

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::animation::AnimationCurve;
 use crate::ui::{App, AppEvent};
-use crate::window::ext::{ColorFTrait, DisplayListBuilderExt, LayoutRectExt};
+use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::FrameBuilder;
 
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
@@ -97,7 +97,7 @@ impl App {
         let builder = &mut frame_builder.builder;
 
         // title bar
-        let title_bar_layout_rect = LayoutRect::new_with_size(
+        let title_bar_layout_rect = LayoutRect::from_origin_and_size(
             LayoutPoint::new(10.0, 10.0),
             LayoutSize::new(window_size.width as f32 - 20.0, 35.0),
         );
@@ -126,7 +126,7 @@ impl App {
         );
 
         // close button
-        let close_button_layout_rect = LayoutRect::new_with_size(
+        let close_button_layout_rect = LayoutRect::from_origin_and_size(
             LayoutPoint::new(window_size.width as f32 - 55.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
@@ -148,7 +148,7 @@ impl App {
         );
 
         // maximize button
-        let maximize_button_layout_rect = LayoutRect::new_with_size(
+        let maximize_button_layout_rect = LayoutRect::from_origin_and_size(
             LayoutPoint::new(window_size.width as f32 - 100.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
@@ -170,7 +170,7 @@ impl App {
         );
 
         // minimize button
-        let minimize_button_layout_rect = LayoutRect::new_with_size(
+        let minimize_button_layout_rect = LayoutRect::from_origin_and_size(
             LayoutPoint::new(window_size.width as f32 - 145.0, 15.0),
             LayoutSize::new(35.0, 25.0),
         );
