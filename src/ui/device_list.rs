@@ -83,7 +83,7 @@ impl DocumentTrait for DeviceList {
 
     fn calculate_size(
         &mut self,
-        frame_size: LayoutSize,
+        _frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let driver_hashmap = match wrapper.global_state.driver_hashmap_mutex.lock() {
@@ -125,6 +125,8 @@ impl DocumentTrait for DeviceList {
             }
         }
 
+        let mut max_device_count = 0;
+
         // add new data
         for (thread_id, driver) in driver_hashmap.iter() {
             let (_, _, device_data_hashmap) = self
@@ -135,6 +137,10 @@ impl DocumentTrait for DeviceList {
                     driver.device_configuration_descriptor.device_name.clone(),
                     HashMap::new(),
                 ));
+
+            if driver.device_list.serial_number_vec.len() > max_device_count {
+                max_device_count = driver.device_list.serial_number_vec.len();
+            }
 
             for serial_number in driver.device_list.serial_number_vec.clone() {
                 if let Some((to_remove, animation, _)) = device_data_hashmap.get_mut(&serial_number)
@@ -162,7 +168,10 @@ impl DocumentTrait for DeviceList {
             }
         }
 
-        frame_size
+        LayoutSize::new(
+            driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
+            max_device_count as f32 * 160.0 - 10.0,
+        )
     }
 
     fn draw(
@@ -175,16 +184,20 @@ impl DocumentTrait for DeviceList {
     ) {
         let builder = &mut frame_builder.builder;
 
-        for (_, device_name, device_data_hashmap) in self.driver_device_data_hashmap.values() {
-            for (serial_number, (_, animation, key)) in device_data_hashmap.iter() {
+        for (driver_index, (_, device_name, device_data_hashmap)) in
+            self.driver_device_data_hashmap.values().enumerate()
+        {
+            for (device_index, (serial_number, (_, animation, key))) in
+                device_data_hashmap.iter().enumerate()
+            {
+                let device_button_layout_point =
+                    LayoutPoint::new(device_index as f32 * 160.0, driver_index as f32 * 160.0);
                 let device_button_layout_rect = LayoutRect::new_with_size(
-                    LayoutPoint::new(0.0, 0.0),
+                    device_button_layout_point,
                     LayoutSize::new(150.0, 150.0),
                 );
-                let device_button_common_item_properties = &CommonItemProperties::new(
-                    device_button_layout_rect,
-                    frame_builder.space_and_clip,
-                );
+                let device_button_common_item_properties =
+                    &CommonItemProperties::new(device_button_layout_rect, space_and_clip);
 
                 builder.push_simple_stacking_context_with_filters(
                     LayoutPoint::zero(),
@@ -214,7 +227,7 @@ impl DocumentTrait for DeviceList {
                         .unwrap_or_default()
                         .to_string(),
                     ColorF::new_u(255, 255, 255, 200),
-                    LayoutPoint::new(7.5, 7.5),
+                    device_button_layout_point + LayoutSize::new(7.5, 7.5),
                     space_and_clip,
                     None,
                 );
@@ -225,7 +238,7 @@ impl DocumentTrait for DeviceList {
                         .unwrap_or_default()
                         .to_string(),
                     ColorF::new_u(255, 255, 255, 100),
-                    LayoutPoint::new(7.5, 130.0),
+                    device_button_layout_point + LayoutSize::new(7.5, 130.0),
                     space_and_clip,
                     None,
                 );
