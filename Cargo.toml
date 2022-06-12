@@ -2,14 +2,20 @@
 name = "mad-rust"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 
 [workspace]
 members = ["driver/mmo7"]
 
 [dependencies]
-slint = "0.2.1"
+webrender = { git = "https://github.com/servo/webrender" }
+glutin = "0.28.0"
+gleam = "0.13.1"
+winit = "0.26.1"
+window-vibrancy = "0.1.3"
+png = "0.17.5"
+
 util = { path = "./util" }
 
-[build-dependencies]
-slint-build = "0.2.1"
+num = "0.4.0"
+num-derive = "0.3.3"
+num-traits = "0.2.15"

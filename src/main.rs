@@ -1,18 +1,28 @@
-slint::include_modules!();
+mod animation;
+mod connection;
+mod ui;
+mod window;
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use std::thread::{spawn, ThreadId};
-use std::time::Duration;
+use std::sync::atomic::Ordering;
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::thread::ThreadId;
 
-use slint::{invoke_from_event_loop, Image, SharedString, VecModel, Weak};
-use util::connection::{command::*, Server};
-use util::thread::{kill_double, DualChannel};
-use util::time::Timer;
+use connection::Connection;
+use ui::App;
+use window::{GlobalStateTrait, Window, WindowOptions};
 
-struct Driver {
+use util::{
+    connection::command::{DeviceConfigurationDescriptor, DeviceList},
+    thread::kill_double,
+};
+#[cfg(target_os = "windows")]
+use window_vibrancy::apply_blur;
+#[cfg(target_os = "macos")]
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+use winit::dpi::PhysicalSize;
+
+pub struct Driver {
     device_configuration_descriptor: DeviceConfigurationDescriptor,
     device_list: DeviceList,
 }
@@ -26,118 +36,64 @@ impl Driver {
     }
 }
 
-#[derive(Debug, Clone)]
-enum AppState {
-    DeviceSelectionWindow,
+pub struct GlobalState {
+    do_redraw: AtomicBool,
+    driver_hashmap_mutex: Mutex<HashMap<ThreadId, Driver>>,
 }
 
-impl Into<i32> for AppState {
-    fn into(self) -> i32 {
-        self as i32
+impl GlobalState {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            do_redraw: AtomicBool::new(true),
+            driver_hashmap_mutex: Mutex::new(HashMap::new()),
+        })
+    }
+}
+
+impl GlobalStateTrait for GlobalState {
+    fn should_redraw(&self) -> bool {
+        self.do_redraw.swap(false, Ordering::Relaxed)
+    }
+
+    fn request_redraw(&self) {
+        self.do_redraw.store(true, Ordering::Relaxed);
     }
 }
 
 fn main() {
     if !kill_double() {
-        let server = Server::new();
-        let server_dualchannel = server.dual_channel;
-        let ui = MainWindow::new();
-        let ui_handle = ui.as_weak();
-        let driver_hashmap_mutex = Arc::new(Mutex::new(HashMap::<ThreadId, Driver>::new()));
+        let global_state = GlobalState::new();
+        let connection = Connection::new(global_state.clone());
 
-        run_connection(server_dualchannel, ui_handle, driver_hashmap_mutex);
+        connection.run();
 
-        ui.set_app_state(AppState::DeviceSelectionWindow.into());
-        ui.run();
-    }
-}
+        let mut window_options =
+            WindowOptions::new("Mad rust", 1080, 720, include_bytes!("../ui/icon.png"));
 
-// connection processing
-fn run_connection(
-    server_dualchannel: DualChannel<(ThreadId, bool, Vec<u8>)>,
-    ui_handle: Weak<MainWindow>,
-    driver_hashmap_mutex: Arc<Mutex<HashMap<ThreadId, Driver>>>,
-) {
-    spawn(move || {
-        let mut timer = Timer::new(Duration::from_millis(100));
+        window_options.transparent = true;
+        window_options.decorations = false;
+        window_options.min_size = Some(PhysicalSize::new(533, 300));
 
-        loop {
-            if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
-                let mut driver_hashmap = match driver_hashmap_mutex.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
+        let mut window = Window::new(window_options, global_state);
 
-                if is_running {
-                    if data.len() > 0 {
-                        match Commands::from(data) {
-                            Commands::DeviceConfigurationDescriptor(
-                                device_configuration_descriptor,
-                            ) => {
-                                // initiate driver data
-                                driver_hashmap.insert(
-                                    thread_id,
-                                    Driver::new(device_configuration_descriptor),
-                                );
-                            }
-                            Commands::DeviceList(device_list) => {
-                                if let Some(driver) = driver_hashmap.get_mut(&thread_id) {
-                                    driver.device_list = device_list;
-
-                                    update_device_list_ui(
-                                        ui_handle.clone(),
-                                        driver_hashmap_mutex.clone(),
-                                    );
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                } else {
-                    // clearing driver data
-                    driver_hashmap.remove(&thread_id);
-
-                    update_device_list_ui(ui_handle.clone(), driver_hashmap_mutex.clone());
-                }
-            }
-
-            timer.wait();
-        }
-    });
-}
-
-// ui processing
-fn update_device_list_ui(
-    ui_handle: Weak<MainWindow>,
-    driver_hashmap_mutex: Arc<Mutex<HashMap<ThreadId, Driver>>>,
-) {
-    invoke_from_event_loop(move || {
-        let mut device_list: Vec<DeviceData> = vec![];
-
-        for driver in match driver_hashmap_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-        .values()
         {
-            if let Ok(icon) = Image::load_from_path(Path::new(
-                &driver.device_configuration_descriptor.device_icon_path,
-            )) {
-                for serial_number in driver.device_list.serial_number_vec.clone() {
-                    device_list.push(DeviceData {
-                        icon: icon.clone(),
-                        name: SharedString::from(
-                            driver.device_configuration_descriptor.device_name.clone(),
-                        ),
-                        serial_number: SharedString::from(serial_number),
-                    });
-                }
-            }
+            // add background blur effect on windows and macos
+            #[cfg(target_os = "windows")]
+            apply_blur(&window.wrapper.context.window(), None).ok();
+
+            #[cfg(target_os = "macos")]
+            apply_vibrancy(
+                &window.context.window(),
+                NSVisualEffectMaterial::AppearanceBased,
+            )
+            .ok();
         }
 
-        ui_handle
-            .upgrade()
-            .unwrap()
-            .set_device_list(Rc::new(VecModel::from(device_list)).clone().into());
-    });
+        window
+            .wrapper
+            .load_font_file("OpenSans", include_bytes!("../ui/font/OpenSans.ttf"));
+        window.set_window::<App>();
+        window.run();
+        window.deinit();
+    }
 }
