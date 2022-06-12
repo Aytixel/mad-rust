@@ -304,6 +304,17 @@ impl WindowTrait<GlobalState> for App {
             PrimitiveFlags::IS_BACKFACE_VISIBLE,
         );
 
+        let background_size = LayoutRect::from_size(LayoutSize::new(
+            wrapper.window_size.width as f32,
+            wrapper.window_size.height as f32,
+        ));
+
+        frame_builder.builder.push_rect(
+            &CommonItemProperties::new(background_size, frame_builder.space_and_clip),
+            background_size,
+            ColorF::new_u(33, 33, 33, 240),
+        );
+
         // calcultate the scroll frame content size
         self.scroll_content_size = self
             .document

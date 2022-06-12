@@ -16,7 +16,6 @@ use util::{
     connection::command::{DeviceConfigurationDescriptor, DeviceList},
     thread::kill_double,
 };
-use webrender::api::{ColorF, ColorU};
 #[cfg(target_os = "windows")]
 use window_vibrancy::apply_blur;
 #[cfg(target_os = "macos")]
@@ -75,11 +74,7 @@ fn main() {
         window_options.decorations = false;
         window_options.min_size = Some(PhysicalSize::new(533, 300));
 
-        let mut window = Window::new(
-            window_options,
-            global_state,
-            ColorF::from(ColorU::new(33, 33, 33, 240)),
-        );
+        let mut window = Window::new(window_options, global_state);
 
         {
             // add background blur effect on windows and macos

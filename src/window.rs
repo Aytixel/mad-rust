@@ -276,7 +276,7 @@ pub struct Window<T: GlobalStateTrait> {
 }
 
 impl<T: GlobalStateTrait> Window<T> {
-    pub fn new(window_options: WindowOptions, global_state: Arc<T>, clear_color: ColorF) -> Self {
+    pub fn new(window_options: WindowOptions, global_state: Arc<T>) -> Self {
         let event_loop = EventLoop::new();
         let window = DefaultWindow::new();
         let mut window_builder = WindowBuilder::new()
@@ -320,7 +320,7 @@ impl<T: GlobalStateTrait> Window<T> {
         };
 
         let opts = RendererOptions {
-            clear_color,
+            clear_color: ColorF::TRANSPARENT,
             ..RendererOptions::default()
         };
         let device_size = {
