@@ -159,24 +159,26 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
         self.context.window().outer_position().unwrap()
     }
 
-    pub fn set_window_size(&self, size: PhysicalSize<u32>) {
+    pub fn set_window_size(&mut self, size: PhysicalSize<u32>) {
         let min_window_size = self.min_size.unwrap_or(PhysicalSize::default());
 
-        if let Some(max_window_size) = self.max_size {
-            self.context.window().set_inner_size(PhysicalSize::new(
+        self.window_size = if let Some(max_window_size) = self.max_size {
+            PhysicalSize::new(
                 size.width
                     .max(min_window_size.width)
                     .min(max_window_size.width),
                 size.height
                     .max(min_window_size.height)
                     .min(max_window_size.height),
-            ))
+            )
         } else {
-            self.context.window().set_inner_size(PhysicalSize::new(
+            PhysicalSize::new(
                 size.width.max(min_window_size.width),
                 size.height.max(min_window_size.height),
-            ))
-        }
+            )
+        };
+        self.context.window().set_inner_size(self.window_size);
+        self.global_state.should_redraw();
     }
 
     pub fn set_window_position(&self, position: PhysicalPosition<i32>) {
