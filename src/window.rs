@@ -203,12 +203,13 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
     fn redraw(&mut self, window: &mut Box<dyn WindowTrait<T>>, force: bool) {
         let mut txn = Transaction::new();
 
-        window.animate(&mut txn);
+        window.animate(&mut txn, self);
 
         if self.global_state.should_redraw() || force {
             let mut frame_builder = FrameBuilder::new::<T>(self);
 
             window.redraw(&mut frame_builder, self);
+            window.set_scroll_offsets(&mut txn);
             txn.set_display_list(
                 self.epoch,
                 None,
@@ -533,9 +534,11 @@ pub trait WindowTrait<T: GlobalStateTrait> {
         false
     }
 
-    fn animate(&mut self, _txn: &mut Transaction) {}
+    fn animate(&mut self, _txn: &mut Transaction, _wrapper: &mut WindowWrapper<T>) {}
 
     fn redraw(&mut self, _frame_builder: &mut FrameBuilder, _wrapper: &mut WindowWrapper<T>) {}
+
+    fn set_scroll_offsets(&mut self, _txn: &mut Transaction) {}
 
     fn unload(&mut self) {}
 }

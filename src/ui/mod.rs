@@ -266,7 +266,8 @@ impl WindowTrait<GlobalState> for App {
                 self.update_over_states(hit_items, wrapper);
             }
             Event::MouseWheel(delta) => {
-                self.calculate_wheel_scroll(delta, hit_items, wrapper);
+                self.calculate_wheel_scroll(delta, hit_items.clone(), wrapper);
+                self.update_over_states(hit_items, wrapper);
             }
             Event::DeviceMotion(delta) => {
                 self.update_window_resize(delta, wrapper);
@@ -287,9 +288,9 @@ impl WindowTrait<GlobalState> for App {
         self.do_exit
     }
 
-    fn animate(&mut self, txn: &mut Transaction) {
+    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
         self.animate_title_bar(txn);
-        self.document.animate(txn);
+        self.document.animate(txn, wrapper);
     }
 
     fn redraw(
@@ -363,6 +364,25 @@ impl WindowTrait<GlobalState> for App {
         frame_builder.builder.pop_stacking_context();
     }
 
+    fn set_scroll_offsets(&mut self, txn: &mut Transaction) {
+        self.scroll_offset = LayoutVector2D::new(
+            self.scroll_offset
+                .x
+                .min((self.scroll_content_size.width - self.scroll_frame_size.width).max(0.0)),
+            self.scroll_offset
+                .y
+                .min((self.scroll_content_size.height - self.scroll_frame_size.height).max(0.0)),
+        );
+
+        txn.set_scroll_offsets(
+            ExternalScrollId(EXT_SCROLL_ID_ROOT, PipelineId::dummy()),
+            vec![SampledScrollOffset {
+                offset: self.scroll_offset,
+                generation: APZScrollGeneration::default(),
+            }],
+        );
+    }
+
     fn unload(&mut self) {
         for font in self.font_hashmap.values_mut() {
             font.unload();
@@ -373,7 +393,7 @@ impl WindowTrait<GlobalState> for App {
 pub trait DocumentTrait {
     fn get_title(&self) -> &'static str;
 
-    fn animate(&mut self, txn: &mut Transaction);
+    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>);
 
     fn calculate_size(
         &mut self,

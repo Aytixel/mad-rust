@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::animation::{Animation, AnimationCurve};
 use crate::ui::DocumentTrait;
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
-use crate::window::{Font, FrameBuilder, WindowWrapper};
+use crate::window::{Font, FrameBuilder, GlobalStateTrait, WindowWrapper};
 use crate::GlobalState;
 
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
@@ -41,7 +41,7 @@ impl DocumentTrait for DeviceList {
         "Device List"
     }
 
-    fn animate(&mut self, txn: &mut Transaction) {
+    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
         let mut floats = vec![];
 
         for thread_id in self.driver_device_data_hashmap.clone().keys() {
@@ -63,6 +63,7 @@ impl DocumentTrait for DeviceList {
                 } else if *to_remove {
                     // remove the device
                     device_data_hashmap.remove(serial_number);
+                    wrapper.global_state.request_redraw();
                 }
             }
 
@@ -168,12 +169,10 @@ impl DocumentTrait for DeviceList {
             }
         }
 
-        // LayoutSize::new(
-        //     driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
-        //     max_device_count as f32 * 160.0 - 10.0,
-        // )
-
-        LayoutSize::new(2000.0, 2000.0)
+        LayoutSize::new(
+            max_device_count as f32 * 160.0 - 10.0,
+            driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
+        )
     }
 
     fn draw(
