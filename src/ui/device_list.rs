@@ -109,7 +109,7 @@ impl DocumentTrait for DeviceList {
                             device_data_hashmap.get_mut(serial_number).unwrap();
 
                         *to_remove = true;
-                        animation.to(0.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
+                        animation.to(0.0, Duration::from_millis(400), AnimationCurve::EASE_IN_OUT);
                     }
                 }
             } else {
@@ -121,7 +121,7 @@ impl DocumentTrait for DeviceList {
 
                 for (to_remove, animation, _) in device_data_hashmap.values_mut() {
                     *to_remove = true;
-                    animation.to(0.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
+                    animation.to(0.0, Duration::from_millis(400), AnimationCurve::EASE_IN_OUT);
                 }
             }
         }
@@ -148,7 +148,7 @@ impl DocumentTrait for DeviceList {
                 {
                     // restore the old animation in case of reconnecting
                     *to_remove = false;
-                    animation.to(1.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
+                    animation.to(1.0, Duration::from_millis(400), AnimationCurve::EASE_IN_OUT);
                 } else {
                     // create a new animation
                     let mut animation =
@@ -156,7 +156,7 @@ impl DocumentTrait for DeviceList {
                             *value = (to - from) * coef as f32 + from
                         });
 
-                    animation.to(1.0, Duration::from_millis(200), AnimationCurve::EASE_IN_OUT);
+                    animation.to(1.0, Duration::from_millis(400), AnimationCurve::EASE_IN_OUT);
                     device_data_hashmap.insert(
                         serial_number,
                         (
