@@ -84,7 +84,7 @@ impl DocumentTrait for DeviceList {
 
     fn calculate_size(
         &mut self,
-        _frame_size: LayoutSize,
+        mut frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let driver_hashmap = match wrapper.global_state.driver_hashmap_mutex.lock() {
@@ -126,7 +126,7 @@ impl DocumentTrait for DeviceList {
             }
         }
 
-        let mut max_device_count = 0;
+        let mut device_button_layout_point = LayoutPoint::zero();
 
         // add new data
         for (thread_id, driver) in driver_hashmap.iter() {
@@ -138,10 +138,6 @@ impl DocumentTrait for DeviceList {
                     driver.device_configuration_descriptor.device_name.clone(),
                     HashMap::new(),
                 ));
-
-            if driver.device_list.serial_number_vec.len() > max_device_count {
-                max_device_count = driver.device_list.serial_number_vec.len();
-            }
 
             for serial_number in driver.device_list.serial_number_vec.clone() {
                 if let Some((to_remove, animation, _)) = device_data_hashmap.get_mut(&serial_number)
@@ -166,33 +162,36 @@ impl DocumentTrait for DeviceList {
                         ),
                     );
                 }
+
+                // calculate the next button position
+                // 310 = current button width + spacing + next button width
+                if device_button_layout_point.x < frame_size.width - 310.0 {
+                    device_button_layout_point.x += 160.0;
+                } else {
+                    device_button_layout_point.x = 0.0;
+                    device_button_layout_point.y += 160.0;
+                }
             }
         }
 
-        LayoutSize::new(
-            max_device_count as f32 * 160.0 - 10.0,
-            driver_hashmap.iter().count() as f32 * 160.0 - 10.0,
-        )
+        // 150 = current button row height
+        frame_size.height = device_button_layout_point.y + 150.0;
+        frame_size
     }
 
     fn draw(
         &self,
-        _frame_size: LayoutSize,
+        frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
         font_hashmap: &HashMap<&'static str, Font>,
         _wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
+        let mut device_button_layout_point = LayoutPoint::zero();
 
-        for (driver_index, (_, device_name, device_data_hashmap)) in
-            self.driver_device_data_hashmap.values().enumerate()
-        {
-            for (device_index, (serial_number, (_, animation, key))) in
-                device_data_hashmap.iter().enumerate()
-            {
-                let device_button_layout_point =
-                    LayoutPoint::new(device_index as f32 * 160.0, driver_index as f32 * 160.0);
+        for (_, device_name, device_data_hashmap) in self.driver_device_data_hashmap.values() {
+            for (serial_number, (_, animation, key)) in device_data_hashmap.iter() {
                 let device_button_layout_rect = LayoutRect::from_origin_and_size(
                     device_button_layout_point,
                     LayoutSize::new(150.0, 150.0),
@@ -244,6 +243,15 @@ impl DocumentTrait for DeviceList {
                     None,
                 );
                 builder.pop_stacking_context();
+
+                // calculate the next button position
+                // 310 = current button width + spacing + next button width
+                if device_button_layout_point.x < frame_size.width - 310.0 {
+                    device_button_layout_point.x += 160.0;
+                } else {
+                    device_button_layout_point.x = 0.0;
+                    device_button_layout_point.y += 160.0;
+                }
             }
         }
     }

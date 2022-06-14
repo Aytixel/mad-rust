@@ -372,7 +372,7 @@ impl<T: GlobalStateTrait> Window<T> {
 
                     match global_event {
                         winit::event::Event::UserEvent(()) => {
-                            // render new frame when they are ready
+                            // render new frames when they are ready
                             self.wrapper.renderer.update();
                             self.wrapper
                                 .renderer
