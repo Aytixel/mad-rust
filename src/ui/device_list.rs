@@ -51,7 +51,9 @@ impl DocumentTrait for DeviceList {
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
         let mut floats = vec![];
 
-        for thread_id in self.driver_device_data_hashmap.clone().keys() {
+        for (thread_id, (_, _, image_key_option, _)) in
+            self.driver_device_data_hashmap.clone().iter()
+        {
             let (to_remove, _, _, device_data_hashmap) =
                 self.driver_device_data_hashmap.get_mut(thread_id).unwrap();
             let mut has_update = false;
@@ -76,6 +78,16 @@ impl DocumentTrait for DeviceList {
 
             if !has_update && *to_remove {
                 // remove the driver
+                if let Some((image_key, _, _)) = image_key_option {
+                    let mut txn = Transaction::new();
+
+                    txn.delete_image(*image_key);
+                    wrapper
+                        .api
+                        .borrow_mut()
+                        .send_transaction(wrapper.document_id, txn);
+                }
+
                 self.driver_device_data_hashmap.remove(thread_id);
             }
         }
@@ -335,6 +347,21 @@ impl DocumentTrait for DeviceList {
                     device_button_layout_point.x = 0.0;
                     device_button_layout_point.y += 160.0;
                 }
+            }
+        }
+    }
+
+    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
+        for (_, _, image_key_option, _) in self.driver_device_data_hashmap.clone().values() {
+            // unload image
+            if let Some((image_key, _, _)) = image_key_option {
+                let mut txn = Transaction::new();
+
+                txn.delete_image(*image_key);
+                wrapper
+                    .api
+                    .borrow_mut()
+                    .send_transaction(wrapper.document_id, txn);
             }
         }
     }

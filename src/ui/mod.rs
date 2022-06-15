@@ -394,10 +394,12 @@ impl WindowTrait<GlobalState> for App {
         );
     }
 
-    fn unload(&mut self) {
+    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         for font in self.font_hashmap.values_mut() {
             font.unload();
         }
+
+        self.document.unload(wrapper);
     }
 }
 
@@ -420,4 +422,6 @@ pub trait DocumentTrait {
         font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     );
+
+    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>);
 }

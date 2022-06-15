@@ -354,7 +354,7 @@ impl<T: GlobalStateTrait> Window<T> {
     }
 
     pub fn set_window<U: WindowInitTrait<T>>(&mut self) {
-        self.window.unload();
+        self.window.unload(&mut self.wrapper);
         self.window = U::new(&mut self.wrapper);
         self.wrapper.global_state.request_redraw();
     }
@@ -494,7 +494,7 @@ impl<T: GlobalStateTrait> Window<T> {
             timer.wait();
         }
 
-        self.window.unload();
+        self.window.unload(&mut self.wrapper);
         self.wrapper.unload_fonts();
     }
 
@@ -538,7 +538,7 @@ pub trait WindowTrait<T: GlobalStateTrait> {
 
     fn set_scroll_offsets(&mut self, _txn: &mut Transaction) {}
 
-    fn unload(&mut self) {}
+    fn unload(&mut self, _wrapper: &mut WindowWrapper<T>) {}
 }
 
 struct DefaultWindow {}
