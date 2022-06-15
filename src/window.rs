@@ -18,7 +18,7 @@ use notifier::Notifier;
 
 use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
-use png::{ColorType, Decoder};
+use image::load_from_memory;
 use util::time::Timer;
 use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, WorldPoint};
 use webrender::api::{ColorF, DocumentId, Epoch, FontKey, HitTestItem, PipelineId, RenderReasons};
@@ -499,16 +499,14 @@ impl<T: GlobalStateTrait> Window<T> {
     }
 
     fn load_icon(data: &'static [u8]) -> Option<Icon> {
-        let decoder = Decoder::new(data);
-        let mut reader = decoder.read_info().unwrap();
-        let mut buf = vec![0; reader.output_buffer_size()];
-        let info = reader.next_frame(&mut buf).unwrap();
-        let bytes = &buf[..info.buffer_size()];
-
-        if let ColorType::Rgba = info.color_type {
-            Icon::from_rgba(bytes.to_vec(), info.width, info.height).ok()
-        } else {
-            None
+        match load_from_memory(data) {
+            Ok(image) => Icon::from_rgba(
+                image.clone().into_rgb8().into_raw(),
+                image.width(),
+                image.height(),
+            )
+            .ok(),
+            Err(_) => None,
         }
     }
 

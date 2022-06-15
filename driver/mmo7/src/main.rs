@@ -1,8 +1,6 @@
 mod mapper;
 
 use std::collections::HashSet;
-use std::env::current_exe;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
@@ -209,14 +207,7 @@ fn run_connection(
             VID,
             PID,
             "MMO7".to_string(),
-            current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join(Path::new("icon.png"))
-                .to_str()
-                .unwrap()
-                .to_string(),
+            include_bytes!("../icon.png").to_vec(),
             3,
             3,
             vec![

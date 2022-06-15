@@ -8,10 +8,14 @@ use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, GlobalStateTrait, WindowWrapper};
 use crate::GlobalState;
 
+use image::imageops::{resize, FilterType};
+use image::load_from_memory;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, FilterOp,
-    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue, SpaceAndClipInfo,
+    AlphaType, BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, FilterOp,
+    IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags, ImageFormat, ImageKey,
+    ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue,
+    SpaceAndClipInfo,
 };
 use webrender::Transaction;
 
@@ -23,15 +27,18 @@ pub struct DeviceList {
         (
             bool,
             String,
+            Option<(ImageKey, f32, f32)>,
             HashMap<String, (bool, Animation<f32>, PropertyBindingKey<f32>)>,
         ),
     >,
+    image_id: u32,
 }
 
 impl DeviceList {
     pub fn new() -> Self {
         Self {
             driver_device_data_hashmap: HashMap::new(),
+            image_id: 0,
         }
     }
 }
@@ -45,7 +52,7 @@ impl DocumentTrait for DeviceList {
         let mut floats = vec![];
 
         for thread_id in self.driver_device_data_hashmap.clone().keys() {
-            let (to_remove, _, device_data_hashmap) =
+            let (to_remove, _, _, device_data_hashmap) =
                 self.driver_device_data_hashmap.get_mut(thread_id).unwrap();
             let mut has_update = false;
 
@@ -96,7 +103,7 @@ impl DocumentTrait for DeviceList {
         for thread_id in self.driver_device_data_hashmap.clone().keys() {
             if driver_hashmap.contains_key(&thread_id) {
                 // only mark to remove devices
-                let (_, _, device_data_hashmap) =
+                let (_, _, _, device_data_hashmap) =
                     self.driver_device_data_hashmap.get_mut(&thread_id).unwrap();
 
                 for serial_number in device_data_hashmap.clone().keys() {
@@ -114,7 +121,7 @@ impl DocumentTrait for DeviceList {
                 }
             } else {
                 // mark to remove the entire driver
-                let (to_remove, _, device_data_hashmap) =
+                let (to_remove, _, _, device_data_hashmap) =
                     self.driver_device_data_hashmap.get_mut(&thread_id).unwrap();
 
                 *to_remove = true;
@@ -130,14 +137,70 @@ impl DocumentTrait for DeviceList {
 
         // add new data
         for (thread_id, driver) in driver_hashmap.iter() {
-            let (_, _, device_data_hashmap) = self
+            let (_, _, _, device_data_hashmap) = match self
                 .driver_device_data_hashmap
-                .entry(*thread_id)
-                .or_insert((
-                    false,
-                    driver.device_configuration_descriptor.device_name.clone(),
-                    HashMap::new(),
-                ));
+                .get_mut(thread_id)
+            {
+                Some(driver_device_data) => driver_device_data,
+                None => {
+                    let image_key = match load_from_memory(
+                        driver
+                            .device_configuration_descriptor
+                            .device_icon
+                            .as_slice(),
+                    ) {
+                        Ok(image) => {
+                            let mut height = 150.0f32;
+                            let mut width = 150.0f32;
+
+                            if image.height() > image.width() {
+                                width /= image.height() as f32;
+                                width *= image.width() as f32;
+                            } else {
+                                height /= image.width() as f32;
+                                height *= image.height() as f32;
+                            }
+
+                            let image =
+                                resize(&image, width as u32, height as u32, FilterType::Lanczos3);
+                            let image_descriptor = ImageDescriptor::new(
+                                width as i32,
+                                height as i32,
+                                ImageFormat::RGBA8,
+                                ImageDescriptorFlags::empty(),
+                            );
+                            let image_data = ImageData::new(image.into_raw());
+                            let image_key = ImageKey::new(IdNamespace(0), {
+                                let image_id = self.image_id;
+
+                                self.image_id += 1;
+
+                                image_id
+                            });
+                            let mut txn = Transaction::new();
+
+                            txn.add_image(image_key, image_descriptor, image_data, None);
+                            wrapper
+                                .api
+                                .borrow_mut()
+                                .send_transaction(wrapper.document_id, txn);
+
+                            Some((image_key, width, height))
+                        }
+                        Err(_) => None,
+                    };
+                    let driver_device_data = (
+                        false,
+                        driver.device_configuration_descriptor.device_name.clone(),
+                        image_key,
+                        HashMap::new(),
+                    );
+
+                    self.driver_device_data_hashmap
+                        .insert(*thread_id, driver_device_data);
+                    self.driver_device_data_hashmap.get_mut(thread_id).unwrap()
+                }
+            };
 
             for serial_number in driver.device_list.serial_number_vec.clone() {
                 if let Some((to_remove, animation, _)) = device_data_hashmap.get_mut(&serial_number)
@@ -190,7 +253,9 @@ impl DocumentTrait for DeviceList {
         let builder = &mut frame_builder.builder;
         let mut device_button_layout_point = LayoutPoint::zero();
 
-        for (_, device_name, device_data_hashmap) in self.driver_device_data_hashmap.values() {
+        for (_, device_name, image_key_option, device_data_hashmap) in
+            self.driver_device_data_hashmap.values()
+        {
             for (serial_number, (_, animation, key)) in device_data_hashmap.iter() {
                 let device_button_layout_rect = LayoutRect::from_origin_and_size(
                     device_button_layout_point,
@@ -220,6 +285,24 @@ impl DocumentTrait for DeviceList {
                     device_button_common_item_properties,
                     (AppEvent::CloseButton.into(), 0),
                 );
+
+                if let Some((image_key, width, height)) = image_key_option {
+                    let device_button_image_layout_rect = LayoutRect::from_origin_and_size(
+                        device_button_layout_point
+                            + LayoutSize::new((150.0 - width) / 2.0, (150.0 - height) / 2.0),
+                        LayoutSize::new(*width, *height),
+                    );
+
+                    builder.push_image(
+                        &CommonItemProperties::new(device_button_image_layout_rect, space_and_clip),
+                        device_button_image_layout_rect,
+                        ImageRendering::Auto,
+                        AlphaType::PremultipliedAlpha,
+                        *image_key,
+                        ColorF::WHITE,
+                    );
+                }
+
                 font_hashmap["OpenSans_13px"].push_text(
                     builder,
                     device_name
