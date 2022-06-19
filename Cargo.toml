@@ -2,6 +2,7 @@
 name = "mad-rust"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [workspace]
 members = ["driver/mmo7"]
@@ -19,3 +20,6 @@ util = { path = "./util" }
 num = "0.4.0"
 num-derive = "0.3.3"
 num-traits = "0.2.15"
+
+[build-dependencies]
+winres = "0.1"
