@@ -33,8 +33,14 @@ fn main() {
         let client_dualchannel = client.dual_channel;
         let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
         let (host, child) = DualChannel::<Message>::new();
+        let icon_data = include_bytes!("../icon.png").to_vec();
 
-        run_connection(client_dualchannel, child, device_list_mutex.clone());
+        run_connection(
+            client_dualchannel,
+            child,
+            device_list_mutex.clone(),
+            icon_data,
+        );
         listening_new_device(host, device_list_mutex);
     }
 }
@@ -201,13 +207,14 @@ fn run_connection(
     client_dualchannel: DualChannel<(bool, Vec<u8>)>,
     child: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
+    icon_data: Vec<u8>,
 ) {
     spawn(move || {
         let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
             VID,
             PID,
             "MMO7".to_string(),
-            include_bytes!("../icon.png").to_vec(),
+            icon_data,
             3,
             3,
             vec![
