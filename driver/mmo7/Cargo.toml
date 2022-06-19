@@ -2,8 +2,12 @@
 name = "mmo7-driver"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 rusb = "0.9.1"
 enigo = "0.0.14"
 util = { path = "../../util" }
+
+[build-dependencies]
+winres = "0.1.12"

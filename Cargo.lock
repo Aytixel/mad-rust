@@ -1361,6 +1361,7 @@ dependencies = [
  "enigo",
  "rusb",
  "util",
+ "winres",
 ]
 
 [[package]]
