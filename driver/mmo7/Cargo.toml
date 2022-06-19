@@ -12,3 +12,6 @@ thread-priority = "0.8.2"
 
 [build-dependencies]
 winres = "0.1.12"
+
+[package.metadata.winres]
+FileDescription = "Mad Rust - MMO7 driver"

@@ -23,3 +23,6 @@ num-traits = "0.2.15"
 
 [build-dependencies]
 winres = "0.1.12"
+
+[package.metadata.winres]
+FileDescription = "Mad Rust"
