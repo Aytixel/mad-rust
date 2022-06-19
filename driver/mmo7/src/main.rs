@@ -1,3 +1,6 @@
+// hide the console on release builds for windows
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod mapper;
 
 use std::collections::HashSet;
