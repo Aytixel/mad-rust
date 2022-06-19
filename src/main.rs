@@ -10,12 +10,12 @@ use std::thread::ThreadId;
 
 use connection::Connection;
 use ui::App;
-use window::{GlobalStateTrait, Window, WindowOptions};
 
 use util::{
     connection::command::{DeviceConfigurationDescriptor, DeviceList},
     thread::kill_double,
 };
+use window::{GlobalStateTrait, Window, WindowOptions};
 #[cfg(target_os = "windows")]
 use window_vibrancy::apply_blur;
 #[cfg(target_os = "macos")]
