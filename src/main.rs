@@ -36,16 +36,33 @@ impl Driver {
     }
 }
 
+#[derive(Debug)]
+pub struct DeviceId {
+    thread_id: ThreadId,
+    serial_number: String,
+}
+
+impl DeviceId {
+    fn new(thread_id: ThreadId, serial_number: String) -> Self {
+        Self {
+            thread_id,
+            serial_number,
+        }
+    }
+}
+
 pub struct GlobalState {
     do_redraw: AtomicBool,
     driver_hashmap_mutex: Mutex<HashMap<ThreadId, Driver>>,
+    device_id_vec_mutex: Mutex<Vec<DeviceId>>,
 }
 
 impl GlobalState {
-    pub fn new() -> Arc<Self> {
+    fn new() -> Arc<Self> {
         Arc::new(Self {
             do_redraw: AtomicBool::new(true),
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
+            device_id_vec_mutex: Mutex::new(vec![]),
         })
     }
 }

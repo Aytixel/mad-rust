@@ -8,7 +8,7 @@ use crate::animation::{Animation, AnimationCurve};
 use crate::ui::DocumentTrait;
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, GlobalStateTrait, WindowWrapper};
-use crate::GlobalState;
+use crate::{DeviceId, GlobalState};
 
 use image::imageops::{resize, FilterType};
 use image::load_from_memory;
@@ -267,10 +267,16 @@ impl DocumentTrait for DeviceList {
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
         font_hashmap: &HashMap<&'static str, Font>,
-        _wrapper: &mut WindowWrapper<GlobalState>,
+        wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
         let mut device_button_layout_point = LayoutPoint::zero();
+        let mut device_id_vec = match wrapper.global_state.device_id_vec_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
+        device_id_vec.clear();
 
         for device_data in self.device_data_vec.iter() {
             let device_button_layout_rect = LayoutRect::from_origin_and_size(
@@ -297,11 +303,21 @@ impl DocumentTrait for DeviceList {
                 BorderRadius::uniform(3.0),
                 ClipMode::Clip,
             );
+
+            // add hit test
             builder.push_hit_test(
                 device_button_common_item_properties,
-                (AppEvent::CloseButton.into(), 0),
+                (
+                    AppEvent::ChooseDeviceButton.into(),
+                    device_id_vec.len() as u16,
+                ),
             );
+            device_id_vec.push(DeviceId::new(
+                device_data.thread_id,
+                device_data.serial_number.clone(),
+            ));
 
+            // add icon if some
             if let Some(device_icon) = device_data.icon_option.clone() {
                 let device_button_image_layout_rect = LayoutRect::from_origin_and_size(
                     device_button_layout_point

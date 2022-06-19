@@ -39,6 +39,7 @@ pub enum AppEvent {
     MaximizeButton,
     MinimizeButton,
     TitleBar,
+    ChooseDeviceButton,
 }
 
 impl AppEvent {
@@ -102,6 +103,14 @@ impl App {
                             .window()
                             .set_maximized(!wrapper.context.window().is_maximized()),
                         AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
+                        AppEvent::ChooseDeviceButton => {
+                            let device_id_vec =
+                                match wrapper.global_state.device_id_vec_mutex.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => poisoned.into_inner(),
+                                };
+                            println!("{:?}", device_id_vec[hit_items[0].tag.1 as usize]);
+                        }
                         _ => {}
                     },
                 }
