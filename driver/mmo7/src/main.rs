@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
+use thread_priority::{set_current_thread_priority, ThreadPriority};
 use util::connection::{command::*, Client, CommandTrait};
 use util::thread::{kill_double, DualChannel};
 use util::time::{Timer, TIMEOUT_1S};
@@ -81,6 +82,9 @@ fn listening_new_device(
                                             device_list.insert(serial_number.clone());
 
                                             spawn(move || {
+                                                set_current_thread_priority(ThreadPriority::Max)
+                                                    .ok();
+
                                                 run_device(serial_number.clone(), host.clone());
 
                                                 match device_list_mutex.lock() {
@@ -210,6 +214,8 @@ fn run_connection(
     icon_data: Vec<u8>,
 ) {
     spawn(move || {
+        set_current_thread_priority(ThreadPriority::Min).ok();
+
         let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
             VID,
             PID,

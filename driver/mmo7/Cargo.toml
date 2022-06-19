@@ -8,6 +8,7 @@ build = "build.rs"
 rusb = "0.9.1"
 enigo = "0.0.14"
 util = { path = "../../util" }
+thread-priority = "0.8.2"
 
 [build-dependencies]
 winres = "0.1.12"
