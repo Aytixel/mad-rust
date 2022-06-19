@@ -501,7 +501,7 @@ impl<T: GlobalStateTrait> Window<T> {
     fn load_icon(data: &'static [u8]) -> Option<Icon> {
         match load_from_memory(data) {
             Ok(image) => Icon::from_rgba(
-                image.clone().into_rgb8().into_raw(),
+                image.clone().into_rgba8().into_raw(),
                 image.width(),
                 image.height(),
             )
