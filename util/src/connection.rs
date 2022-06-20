@@ -279,18 +279,6 @@ pub mod command {
         }
     }
 
-    impl From<u8> for Commands {
-        fn from(value: u8) -> Self {
-            match value {
-                DRIVER_CONFIGURATION_DESCRIPTOR_ID => {
-                    Self::DriverConfigurationDescriptor(DriverConfigurationDescriptor::default())
-                }
-                DEVICE_LIST_ID => Self::DeviceList(DeviceList::default()),
-                _ => Self::Unknown,
-            }
-        }
-    }
-
     impl From<Vec<u8>> for Commands {
         fn from(value: Vec<u8>) -> Self {
             match value[0] {
@@ -319,7 +307,6 @@ pub mod command {
 
     #[derive(Serialize, Deserialize, Clone, Default, Debug)]
     pub struct DriverConfigurationDescriptor {
-        #[serde(skip_serializing)]
         pub id: u8,
         pub vid: u16,
         pub pid: u16,
@@ -355,20 +342,16 @@ pub mod command {
 
     impl CommandTrait for DriverConfigurationDescriptor {
         fn to_bytes(&mut self) -> Vec<u8> {
-            let mut data = vec![self.id];
-
-            data.append(&mut bincode::serialize(&self).unwrap());
-            data
+            bincode::serialize(&self).unwrap()
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            bincode::deserialize(&data[..]).unwrap()
+            bincode::deserialize(&data).unwrap()
         }
     }
 
     #[derive(Serialize, Deserialize, Clone, Default, Debug)]
     pub struct DeviceList {
-        #[serde(skip_serializing)]
         pub id: u8,
         pub serial_number_vec: Vec<String>,
     }
@@ -384,14 +367,11 @@ pub mod command {
 
     impl CommandTrait for DeviceList {
         fn to_bytes(&mut self) -> Vec<u8> {
-            let mut data = vec![self.id];
-
-            data.append(&mut bincode::serialize(&self).unwrap());
-            data
+            bincode::serialize(&self).unwrap()
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            bincode::deserialize(&data[..]).unwrap()
+            bincode::deserialize(&data).unwrap()
         }
     }
 }
