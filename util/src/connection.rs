@@ -241,10 +241,10 @@ pub mod client {
     }
 }
 
-pub use command::{Command, CommandTrait};
+pub use command::CommandTrait;
 
 pub mod command {
-    use std::io::{Cursor, Read, Write};
+    use serde::{Deserialize, Serialize};
 
     pub trait CommandTrait {
         fn to_bytes(&mut self) -> Vec<u8>;
@@ -252,102 +252,13 @@ pub mod command {
         fn from_bytes(data: Vec<u8>) -> Self;
     }
 
-    #[derive(Debug, Clone, Default)]
-    pub struct Command {
-        pub data: Cursor<Vec<u8>>,
-        pub id: u8,
-    }
-
-    impl Command {
-        pub fn new(id: u8) -> Self {
-            Self {
-                data: Cursor::new(Vec::new()),
-                id: id,
-            }
-        }
-
-        pub fn add_bytes(&mut self, data: &mut Vec<u8>) -> &mut Self {
-            self.add_u32(data.len() as u32);
-            self.data.write(data).unwrap();
-            self
-        }
-
-        pub fn add_byte(&mut self, data: u8) -> &mut Self {
-            self.data.write(&[data]).unwrap();
-            self
-        }
-
-        pub fn add_string(&mut self, data: String) -> &mut Self {
-            self.add_u32(data.len() as u32);
-            self.data.write(&mut data.as_bytes().to_vec()).unwrap();
-            self
-        }
-
-        pub fn add_u32(&mut self, data: u32) -> &mut Self {
-            self.data.write(&mut data.to_be_bytes().to_vec()).unwrap();
-            self
-        }
-
-        pub fn get_bytes(&mut self) -> Vec<u8> {
-            let mut data = vec![0u8; self.get_u32() as usize];
-
-            self.data.read_exact(&mut data).unwrap();
-
-            data
-        }
-
-        pub fn get_byte(&mut self) -> u8 {
-            let mut data = [0u8; 1];
-
-            self.data.read_exact(&mut data).unwrap();
-
-            data[0]
-        }
-
-        pub fn get_string(&mut self) -> String {
-            let mut data = vec![0u8; self.get_u32() as usize];
-
-            self.data.read_exact(&mut data).unwrap();
-
-            String::from_utf8(data).unwrap()
-        }
-
-        pub fn get_u32(&mut self) -> u32 {
-            let mut data = [0u8; 4];
-
-            self.data.read_exact(&mut data).unwrap();
-
-            u32::from_be_bytes(data)
-        }
-    }
-
-    impl CommandTrait for Command {
-        fn to_bytes(&mut self) -> Vec<u8> {
-            let mut data = vec![self.id];
-            let mut cursor_data = vec![0u8; self.data.position() as usize];
-
-            self.data.set_position(0);
-            self.data.read_exact(&mut cursor_data).unwrap();
-
-            data.append(&mut cursor_data);
-            data
-        }
-
-        fn from_bytes(data: Vec<u8>) -> Self {
-            Self {
-                data: Cursor::new(data[1..].to_vec()),
-                id: data[0],
-            }
-        }
-    }
-
-    const DEVICE_CONFIGURATION_DESCRIPTOR_ID: u8 = 0;
+    const DRIVER_CONFIGURATION_DESCRIPTOR_ID: u8 = 0;
     const DEVICE_LIST_ID: u8 = 1;
     const UNKNOWN_ID: u8 = 255;
 
     #[derive(Debug, Clone)]
     pub enum Commands {
-        DeviceConfigurationDescriptor(DeviceConfigurationDescriptor),
+        DriverConfigurationDescriptor(DriverConfigurationDescriptor),
         DeviceList(DeviceList),
         Unknown,
     }
@@ -361,7 +272,7 @@ pub mod command {
     impl Into<u8> for Commands {
         fn into(self) -> u8 {
             match self {
-                Self::DeviceConfigurationDescriptor(_) => DEVICE_CONFIGURATION_DESCRIPTOR_ID,
+                Self::DriverConfigurationDescriptor(_) => DRIVER_CONFIGURATION_DESCRIPTOR_ID,
                 Self::DeviceList(_) => DEVICE_LIST_ID,
                 Self::Unknown => UNKNOWN_ID,
             }
@@ -371,8 +282,8 @@ pub mod command {
     impl From<u8> for Commands {
         fn from(value: u8) -> Self {
             match value {
-                DEVICE_CONFIGURATION_DESCRIPTOR_ID => {
-                    Self::DeviceConfigurationDescriptor(DeviceConfigurationDescriptor::default())
+                DRIVER_CONFIGURATION_DESCRIPTOR_ID => {
+                    Self::DriverConfigurationDescriptor(DriverConfigurationDescriptor::default())
                 }
                 DEVICE_LIST_ID => Self::DeviceList(DeviceList::default()),
                 _ => Self::Unknown,
@@ -383,8 +294,8 @@ pub mod command {
     impl From<Vec<u8>> for Commands {
         fn from(value: Vec<u8>) -> Self {
             match value[0] {
-                DEVICE_CONFIGURATION_DESCRIPTOR_ID => Self::DeviceConfigurationDescriptor(
-                    DeviceConfigurationDescriptor::from_bytes(value),
+                DRIVER_CONFIGURATION_DESCRIPTOR_ID => Self::DriverConfigurationDescriptor(
+                    DriverConfigurationDescriptor::from_bytes(value),
                 ),
                 DEVICE_LIST_ID => Self::DeviceList(DeviceList::from_bytes(value)),
                 _ => Self::Unknown,
@@ -406,9 +317,10 @@ pub mod command {
         }
     }
 
-    #[derive(Debug, Clone, Default)]
-    pub struct DeviceConfigurationDescriptor {
-        command: Command,
+    #[derive(Serialize, Deserialize, Clone, Default, Debug)]
+    pub struct DriverConfigurationDescriptor {
+        #[serde(skip_serializing)]
+        pub id: u8,
         pub vid: u16,
         pub pid: u16,
         pub device_name: String,
@@ -418,31 +330,18 @@ pub mod command {
         pub button_name_vec: Vec<String>,
     }
 
-    impl DeviceConfigurationDescriptor {
+    impl DriverConfigurationDescriptor {
         pub fn new(
             vid: u16,
             pid: u16,
             device_name: String,
-            mut device_icon: Vec<u8>,
+            device_icon: Vec<u8>,
             mode_count: u8,
             shift_mode_count: u8,
             button_name_vec: Vec<String>,
         ) -> Self {
-            let mut command = Command::new(DEVICE_CONFIGURATION_DESCRIPTOR_ID);
-
-            command.add_u32(((vid as u32) << 16) + pid as u32);
-            command.add_string(device_name.clone());
-            command.add_bytes(&mut device_icon);
-            command.add_byte(mode_count);
-            command.add_byte(shift_mode_count);
-            command.add_byte(button_name_vec.len() as u8);
-
-            for button_name in button_name_vec.clone() {
-                command.add_string(button_name);
-            }
-
             Self {
-                command,
+                id: DRIVER_CONFIGURATION_DESCRIPTOR_ID,
                 vid,
                 pid,
                 device_name,
@@ -454,59 +353,30 @@ pub mod command {
         }
     }
 
-    impl CommandTrait for DeviceConfigurationDescriptor {
+    impl CommandTrait for DriverConfigurationDescriptor {
         fn to_bytes(&mut self) -> Vec<u8> {
-            self.command.to_bytes()
+            let mut data = vec![self.id];
+
+            data.append(&mut bincode::serialize(&self).unwrap());
+            data
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            let mut self_ = Self {
-                command: Command::from_bytes(data),
-                vid: 0,
-                pid: 0,
-                device_name: String::new(),
-                device_icon: vec![],
-                mode_count: 0,
-                shift_mode_count: 0,
-                button_name_vec: vec![],
-            };
-            let vid_pid = self_.command.get_u32();
-
-            self_.vid = (vid_pid >> 16) as u16;
-            self_.pid = vid_pid as u16;
-            self_.device_name = self_.command.get_string();
-            self_.device_icon = self_.command.get_bytes();
-            self_.mode_count = self_.command.get_byte();
-            self_.shift_mode_count = self_.command.get_byte();
-
-            let button_count = self_.command.get_byte();
-
-            for _ in 0..button_count {
-                self_.button_name_vec.push(self_.command.get_string());
-            }
-
-            self_
+            bincode::deserialize(&data[1..]).unwrap()
         }
     }
 
-    #[derive(Debug, Clone, Default)]
+    #[derive(Serialize, Deserialize, Clone, Default, Debug)]
     pub struct DeviceList {
-        command: Command,
+        #[serde(skip_serializing)]
+        pub id: u8,
         pub serial_number_vec: Vec<String>,
     }
 
     impl DeviceList {
         pub fn new(serial_number_vec: Vec<String>) -> Self {
-            let mut command = Command::new(DEVICE_LIST_ID);
-
-            command.add_byte(serial_number_vec.len() as u8);
-
-            for serial_number in serial_number_vec.clone() {
-                command.add_string(serial_number);
-            }
-
             Self {
-                command,
+                id: DEVICE_LIST_ID,
                 serial_number_vec,
             }
         }
@@ -514,21 +384,14 @@ pub mod command {
 
     impl CommandTrait for DeviceList {
         fn to_bytes(&mut self) -> Vec<u8> {
-            self.command.to_bytes()
+            let mut data = vec![self.id];
+
+            data.append(&mut bincode::serialize(&self).unwrap());
+            data
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            let mut self_ = Self {
-                command: Command::from_bytes(data),
-                serial_number_vec: vec![],
-            };
-            let serial_number_count = self_.command.get_byte();
-
-            for _ in 0..serial_number_count {
-                self_.serial_number_vec.push(self_.command.get_string());
-            }
-
-            self_
+            bincode::deserialize(&data[1..]).unwrap()
         }
     }
 }

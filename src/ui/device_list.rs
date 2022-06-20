@@ -159,7 +159,7 @@ impl DocumentTrait for DeviceList {
                     *thread_id,
                     match load_from_memory(
                         driver
-                            .device_configuration_descriptor
+                            .driver_configuration_descriptor
                             .device_icon
                             .as_slice(),
                     ) {
@@ -223,7 +223,7 @@ impl DocumentTrait for DeviceList {
 
                     self.device_data_vec.push(DeviceData::new(
                         DeviceId::new(*thread_id, serial_number.clone()),
-                        driver.device_configuration_descriptor.device_name.clone(),
+                        driver.driver_configuration_descriptor.device_name.clone(),
                         self.device_icon_option_hashmap[thread_id].clone(),
                         animation,
                         wrapper.api.borrow().generate_property_binding_key(),

@@ -40,13 +40,13 @@ impl Connection {
                     if is_running {
                         if data.len() > 0 {
                             match Commands::from(data) {
-                                Commands::DeviceConfigurationDescriptor(
-                                    device_configuration_descriptor,
+                                Commands::DriverConfigurationDescriptor(
+                                    driver_configuration_descriptor,
                                 ) => {
                                     // initiate driver data
                                     driver_hashmap.insert(
                                         thread_id,
-                                        Driver::new(device_configuration_descriptor),
+                                        Driver::new(driver_configuration_descriptor),
                                     );
                                 }
                                 Commands::DeviceList(device_list) => {

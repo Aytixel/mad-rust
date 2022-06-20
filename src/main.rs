@@ -15,7 +15,7 @@ use connection::Connection;
 use ui::App;
 
 use util::{
-    connection::command::{DeviceConfigurationDescriptor, DeviceList},
+    connection::command::{DeviceList, DriverConfigurationDescriptor},
     thread::kill_double,
 };
 use window::{GlobalStateTrait, Window, WindowOptions};
@@ -26,14 +26,14 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use winit::dpi::PhysicalSize;
 
 pub struct Driver {
-    device_configuration_descriptor: DeviceConfigurationDescriptor,
+    driver_configuration_descriptor: DriverConfigurationDescriptor,
     device_list: DeviceList,
 }
 
 impl Driver {
-    fn new(device_configuration_descriptor: DeviceConfigurationDescriptor) -> Self {
+    fn new(driver_configuration_descriptor: DriverConfigurationDescriptor) -> Self {
         Self {
-            device_configuration_descriptor: device_configuration_descriptor,
+            driver_configuration_descriptor,
             device_list: DeviceList::default(),
         }
     }

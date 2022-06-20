@@ -11,7 +11,7 @@ use std::time::Duration;
 use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
-use util::connection::{command::*, Client, CommandTrait};
+use util::connection::{command::*, Client};
 use util::thread::{kill_double, DualChannel};
 use util::time::{Timer, TIMEOUT_1S};
 
@@ -219,7 +219,7 @@ fn run_connection(
     spawn(move || {
         set_current_thread_priority(ThreadPriority::Min).ok();
 
-        let mut device_configuration_descriptor = DeviceConfigurationDescriptor::new(
+        let mut driver_configuration_descriptor = DriverConfigurationDescriptor::new(
             VID,
             PID,
             "MMO7".to_string(),
@@ -250,7 +250,7 @@ fn run_connection(
             if let Some((is_running, data)) = client_dualchannel.recv() {
                 if is_running {
                     if data.len() == 0 {
-                        client_dualchannel.send((true, device_configuration_descriptor.to_bytes()));
+                        client_dualchannel.send((true, driver_configuration_descriptor.to_bytes()));
 
                         update_device_list(&client_dualchannel, device_list_mutex.clone());
                     } else {
