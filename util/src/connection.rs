@@ -362,7 +362,7 @@ pub mod command {
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            bincode::deserialize(&data[1..]).unwrap()
+            bincode::deserialize(&data[..]).unwrap()
         }
     }
 
@@ -391,7 +391,7 @@ pub mod command {
         }
 
         fn from_bytes(data: Vec<u8>) -> Self {
-            bincode::deserialize(&data[1..]).unwrap()
+            bincode::deserialize(&data[..]).unwrap()
         }
     }
 }
