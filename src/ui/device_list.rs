@@ -42,9 +42,8 @@ impl DeviceIcon {
 #[derive(Clone)]
 struct DeviceData {
     to_remove: bool,
-    thread_id: ThreadId,
+    device_id: DeviceId,
     device_name: String,
-    serial_number: String,
     icon_option: Option<Rc<DeviceIcon>>,
     animation: Animation<f32>,
     property_key: PropertyBindingKey<f32>,
@@ -52,18 +51,16 @@ struct DeviceData {
 
 impl DeviceData {
     fn new(
-        thread_id: ThreadId,
+        device_id: DeviceId,
         device_name: String,
-        serial_number: String,
         icon_option: Option<Rc<DeviceIcon>>,
         animation: Animation<f32>,
         property_key: PropertyBindingKey<f32>,
     ) -> Self {
         Self {
             to_remove: false,
-            thread_id,
+            device_id,
             device_name,
-            serial_number,
             icon_option,
             animation,
             property_key,
@@ -112,7 +109,7 @@ impl DocumentTrait for DeviceList {
             }
 
             if has_update || !device_data.to_remove {
-                device_icon_to_keep_hashset.insert(device_data.thread_id);
+                device_icon_to_keep_hashset.insert(device_data.device_id.thread_id);
 
                 // keep the device if animation not ended or not to remove
                 self.device_data_vec.push(device_data);
@@ -209,8 +206,8 @@ impl DocumentTrait for DeviceList {
                         .iter()
                         .enumerate()
                         .find(|(_, device_data)| -> bool {
-                            device_data.thread_id == *thread_id
-                                && device_data.serial_number == *serial_number
+                            device_data.device_id
+                                == DeviceId::new(*thread_id, serial_number.clone())
                         })
                 {
                     device_data_to_keep_hashset.insert(index);
@@ -225,9 +222,8 @@ impl DocumentTrait for DeviceList {
                     device_data_to_keep_hashset.insert(self.device_data_vec.len());
 
                     self.device_data_vec.push(DeviceData::new(
-                        *thread_id,
+                        DeviceId::new(*thread_id, serial_number.clone()),
                         driver.device_configuration_descriptor.device_name.clone(),
-                        serial_number.clone(),
                         self.device_icon_option_hashmap[thread_id].clone(),
                         animation,
                         wrapper.api.borrow().generate_property_binding_key(),
@@ -312,10 +308,7 @@ impl DocumentTrait for DeviceList {
                     device_id_vec.len() as u16,
                 ),
             );
-            device_id_vec.push(DeviceId::new(
-                device_data.thread_id,
-                device_data.serial_number.clone(),
-            ));
+            device_id_vec.push(device_data.device_id.clone());
 
             // add icon if some
             if let Some(device_icon) = device_data.icon_option.clone() {
@@ -353,8 +346,9 @@ impl DocumentTrait for DeviceList {
             font_hashmap["OpenSans_10px"].push_text(
                 builder,
                 device_data
+                    .device_id
                     .serial_number
-                    .get(0..device_data.serial_number.len().min(21))
+                    .get(0..device_data.device_id.serial_number.len().min(21))
                     .unwrap_or_default()
                     .to_string(),
                 ColorF::new_u(255, 255, 255, 100),

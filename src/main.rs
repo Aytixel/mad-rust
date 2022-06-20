@@ -39,7 +39,7 @@ impl Driver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct DeviceId {
     thread_id: ThreadId,
     serial_number: String,
