@@ -3,8 +3,10 @@ fn main() {
         let mut res = winres::WindowsResource::new();
 
         res.set_icon("./icon.ico");
-        res.set_manifest(
-            r#"
+
+        if cfg!(not(debug_assertions)) {
+            res.set_manifest(
+                r#"
             <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
             <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
                 <security>
@@ -15,7 +17,9 @@ fn main() {
             </trustInfo>
             </assembly>
             "#,
-        );
+            );
+        }
+
         res.compile().unwrap();
     }
 }
