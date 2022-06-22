@@ -265,11 +265,11 @@ pub mod command {
 
     impl Commands {
         pub fn test(self, value: &Vec<u8>) -> bool {
-            value[0] == self.into()
+            self.into() == value[0]
         }
     }
 
-    impl Into<u8> for Commands {
+    impl Commands {
         fn into(self) -> u8 {
             match self {
                 Self::DriverConfigurationDescriptor(_) => DRIVER_CONFIGURATION_DESCRIPTOR_ID,

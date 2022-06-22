@@ -12,6 +12,7 @@ thread-priority = "0.8.2"
 util = { path = "../../util" }
 
 hashbrown = "0.12.1"
+serde = { version = "1.0.137", features = ["derive"] }
 
 [build-dependencies]
 winres = "0.1.12"

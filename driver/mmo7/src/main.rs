@@ -3,20 +3,42 @@
 
 mod mapper;
 
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread::spawn;
 use std::time::Duration;
 
 use hashbrown::HashSet;
 use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
+use serde::{Deserialize, Serialize};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
+use util::config::ConfigManager;
 use util::connection::{command::*, Client};
 use util::thread::{kill_double, DualChannel};
 use util::time::{Timer, TIMEOUT_1S};
 
 const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
+
+#[derive(Deserialize, Serialize, Default)]
+struct ButtonConfig {
+    scroll_button: String,
+    left_actionlock: String,
+    right_actionlock: String,
+    forwards_button: String,
+    back_button: String,
+    thumb_anticlockwise: String,
+    thumb_clockwise: String,
+    hat_top: String,
+    hat_left: String,
+    hat_right: String,
+    hat_bottom: String,
+    button_1: String,
+    precision_aim: String,
+    button_2: String,
+    button_3: String,
+}
 
 #[derive(Debug)]
 struct Endpoint {
@@ -38,6 +60,9 @@ fn main() {
         let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
         let (host, child) = DualChannel::<Message>::new();
         let icon_data = include_bytes!("../icon.png").to_vec();
+        let config = Arc::new(RwLock::new(
+            ConfigManager::<BTreeMap<String, ButtonConfig>>::new("mmo7_profiles"),
+        ));
 
         run_connection(
             client_dualchannel,
