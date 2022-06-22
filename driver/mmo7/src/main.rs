@@ -4,7 +4,7 @@
 mod mapper;
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
 
@@ -22,7 +22,7 @@ const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
 
 #[derive(Deserialize, Serialize, Default)]
-struct ButtonConfig {
+pub struct ButtonConfig {
     scroll_button: String,
     left_actionlock: String,
     right_actionlock: String,
@@ -39,6 +39,23 @@ struct ButtonConfig {
     button_2: String,
     button_3: String,
 }
+
+struct MouseConfigBuilder;
+
+impl MouseConfigBuilder {
+    fn default() -> [ButtonConfig; 6] {
+        [
+            ButtonConfig::default(),
+            ButtonConfig::default(),
+            ButtonConfig::default(),
+            ButtonConfig::default(),
+            ButtonConfig::default(),
+            ButtonConfig::default(),
+        ]
+    }
+}
+
+type MouseConfigs = BTreeMap<String, [ButtonConfig; 6]>;
 
 #[derive(Debug)]
 struct Endpoint {
@@ -60,24 +77,50 @@ fn main() {
         let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
         let (host, child) = DualChannel::<Message>::new();
         let icon_data = include_bytes!("../icon.png").to_vec();
-        let config = Arc::new(RwLock::new(
-            ConfigManager::<BTreeMap<String, ButtonConfig>>::new("mmo7_profiles"),
-        ));
+        let mouse_configs_mutex = Arc::new(Mutex::new(ConfigManager::<MouseConfigs>::new(
+            "mmo7_profiles",
+        )));
 
+        watch_config_update(mouse_configs_mutex.clone());
         run_connection(
             client_dualchannel,
             child,
             device_list_mutex.clone(),
             icon_data,
+            mouse_configs_mutex.clone(),
         );
-        listening_new_device(host, device_list_mutex);
+        listening_new_device(host, device_list_mutex, mouse_configs_mutex);
     }
+}
+
+fn watch_config_update(mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>) {
+    let mouse_configs_mutex = mouse_configs_mutex.clone();
+
+    spawn(move || {
+        set_current_thread_priority(ThreadPriority::Min).ok();
+
+        let mut timer = Timer::new(TIMEOUT_1S * 10);
+
+        loop {
+            {
+                let mut mouse_configs = match mouse_configs_mutex.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+
+                mouse_configs.update();
+            }
+
+            timer.wait();
+        }
+    });
 }
 
 // device handling
 fn listening_new_device(
     host: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
+    mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>,
 ) {
     let mut timer = Timer::new(TIMEOUT_1S);
 
@@ -104,16 +147,41 @@ fn listening_new_device(
                                         };
 
                                         if let None = device_list.get(&serial_number) {
-                                            let host = host.clone();
-                                            let device_list_mutex = device_list_mutex.clone();
+                                            {
+                                                // create a default config if needed
+                                                let mut mouse_configs =
+                                                    match mouse_configs_mutex.lock() {
+                                                        Ok(guard) => guard,
+                                                        Err(poisoned) => poisoned.into_inner(),
+                                                    };
+
+                                                if !mouse_configs
+                                                    .config
+                                                    .contains_key(&serial_number)
+                                                {
+                                                    mouse_configs.config.insert(
+                                                        serial_number.clone(),
+                                                        MouseConfigBuilder::default(),
+                                                    );
+                                                    mouse_configs.save();
+                                                }
+                                            }
 
                                             device_list.insert(serial_number.clone());
+
+                                            let host = host.clone();
+                                            let device_list_mutex = device_list_mutex.clone();
+                                            let mouse_configs_mutex = mouse_configs_mutex.clone();
 
                                             spawn(move || {
                                                 set_current_thread_priority(ThreadPriority::Max)
                                                     .ok();
 
-                                                run_device(serial_number.clone(), host.clone());
+                                                run_device(
+                                                    serial_number.clone(),
+                                                    host.clone(),
+                                                    mouse_configs_mutex,
+                                                );
 
                                                 match device_list_mutex.lock() {
                                                     Ok(guard) => guard,
@@ -168,7 +236,11 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
     None
 }
 
-fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
+fn run_device(
+    serial_number: String,
+    dual_channel: DualChannel<Message>,
+    mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>,
+) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
         let device = device_handle.device();
         if let Ok(config_descriptor) = device.config_descriptor(0) {
@@ -203,7 +275,7 @@ fn run_device(serial_number: String, dual_channel: DualChannel<Message>) {
                             dual_channel.send(Message::DeviceListUpdate);
 
                             let mut buffer = [0; 8];
-                            let mut mapper = Mapper::new();
+                            let mut mapper = Mapper::new(mouse_configs_mutex);
 
                             loop {
                                 match device_handle.read_interrupt(
@@ -240,6 +312,7 @@ fn run_connection(
     child: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     icon_data: Vec<u8>,
+    mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>,
 ) {
     spawn(move || {
         set_current_thread_priority(ThreadPriority::Min).ok();

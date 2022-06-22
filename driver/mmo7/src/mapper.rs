@@ -1,4 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 use enigo::{Enigo, MouseButton, MouseControllable};
+use util::config::ConfigManager;
+
+use crate::MouseConfigs;
 
 struct ClickState {
     left: bool,
@@ -30,10 +35,11 @@ pub struct Mapper {
     pub shift_mode: Option<u8>,
     click_state: ClickState,
     button_state: ButtonState,
+    mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>,
 }
 
 impl Mapper {
-    pub fn new() -> Self {
+    pub fn new(mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs>>>) -> Self {
         Self {
             enigo: Enigo::new(),
             mode: Some(0),
@@ -60,6 +66,7 @@ impl Mapper {
                 left_actionlock: false,
                 right_actionlock: false,
             },
+            mouse_configs_mutex,
         }
     }
 
