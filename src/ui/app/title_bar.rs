@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::animation::AnimationCurve;
@@ -6,6 +5,7 @@ use crate::ui::{App, AppEvent};
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::FrameBuilder;
 
+use hashbrown::HashSet;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, PropertyBinding,

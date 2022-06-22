@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-
 use crate::ui::{App, AppEvent};
 use crate::window::{FrameBuilder, WindowWrapper};
 use crate::GlobalState;
 
+use hashbrown::HashSet;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     BorderRadius, ClipMode, CommonItemProperties, ComplexClipRegion, SpaceAndClipInfo,

@@ -1,13 +1,12 @@
 mod app;
 mod device_list;
 
-use std::collections::{HashMap, HashSet};
-
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
 use crate::GlobalState;
 
+use hashbrown::{HashMap, HashSet};
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};

@@ -5,7 +5,6 @@ mod frame_builder;
 mod notifier;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +17,7 @@ use notifier::Notifier;
 
 use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
+use hashbrown::HashMap;
 use image::load_from_memory;
 use util::time::Timer;
 use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, WorldPoint};

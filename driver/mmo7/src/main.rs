@@ -3,11 +3,11 @@
 
 mod mapper;
 
-use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
 
+use hashbrown::HashSet;
 use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
 use thread_priority::{set_current_thread_priority, ThreadPriority};

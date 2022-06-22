@@ -6,7 +6,6 @@ mod connection;
 mod ui;
 mod window;
 
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::thread::ThreadId;
@@ -14,6 +13,7 @@ use std::thread::ThreadId;
 use connection::Connection;
 use ui::App;
 
+use hashbrown::HashMap;
 use util::{
     connection::command::{DeviceList, DriverConfigurationDescriptor},
     thread::kill_double,

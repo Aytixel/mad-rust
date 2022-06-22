@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::thread::ThreadId;
 use std::time::Duration;
@@ -10,6 +9,7 @@ use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, GlobalStateTrait, WindowWrapper};
 use crate::{DeviceId, GlobalState};
 
+use hashbrown::{HashMap, HashSet};
 use image::imageops::{resize, FilterType};
 use image::load_from_memory;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
