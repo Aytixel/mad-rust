@@ -1,7 +1,6 @@
 use std::fs::{create_dir, OpenOptions};
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
-use std::time::Duration;
 
 use dirs::config_dir;
 use notify::{
@@ -9,6 +8,8 @@ use notify::{
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+use crate::time::TIMEOUT_1S;
 
 pub struct ConfigManager<T: DeserializeOwned + Serialize + Default> {
     pub folder: Box<Path>,
@@ -43,7 +44,7 @@ impl<T: DeserializeOwned + Serialize + Default> ConfigManager<T> {
 
         // watcher initialization
         let (tx, rx) = channel();
-        let mut watcher: RecommendedWatcher = Watcher::new(tx, Duration::from_secs(1)).unwrap();
+        let mut watcher: RecommendedWatcher = Watcher::new(tx, TIMEOUT_1S * 10).unwrap();
 
         watcher
             .watch(path.clone(), RecursiveMode::NonRecursive)
@@ -58,14 +59,18 @@ impl<T: DeserializeOwned + Serialize + Default> ConfigManager<T> {
         }
     }
 
-    pub fn update(&mut self) {
-        if let Ok(DebouncedEvent::Write(path)) = self.watcher_output_rx.recv() {
+    pub fn update(&mut self) -> bool {
+        if let Ok(DebouncedEvent::Write(path)) = self.watcher_output_rx.try_recv() {
             if let Ok(file) = OpenOptions::new().read(true).open(path) {
                 if let Ok(config) = serde_json::from_reader(&file) {
                     self.config = config;
+
+                    return true;
                 }
             }
         }
+
+        false
     }
 
     pub fn save(&self) -> Option<()> {
@@ -80,8 +85,8 @@ impl<T: DeserializeOwned + Serialize + Default> ConfigManager<T> {
         }
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&mut self) -> Option<()> {
         self.watcher.unwatch(self.path.clone()).ok();
-        self.save();
+        self.save()
     }
 }
