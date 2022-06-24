@@ -15,6 +15,7 @@ use connection::Connection;
 use ui::App;
 
 use hashbrown::HashMap;
+use util::connection::command::DeviceConfig;
 use util::thread::MutexTrait;
 use util::{
     connection::command::{DeviceList, DriverConfigurationDescriptor},
@@ -65,6 +66,7 @@ pub struct GlobalState {
     driver_hashmap_mutex: Mutex<HashMap<ThreadId, Driver>>,
     device_id_vec_mutex: Mutex<Vec<DeviceId>>,
     selected_device_id_option_mutex: Mutex<Option<DeviceId>>,
+    selected_device_config_option_mutex: Mutex<Option<DeviceConfig>>,
     connection_event_queue_mutex: Mutex<VecDeque<ConnectionEvent>>,
 }
 
@@ -75,6 +77,7 @@ impl GlobalState {
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
             device_id_vec_mutex: Mutex::new(vec![]),
             selected_device_id_option_mutex: Mutex::new(None),
+            selected_device_config_option_mutex: Mutex::new(None),
             connection_event_queue_mutex: Mutex::new(VecDeque::new()),
         })
     }

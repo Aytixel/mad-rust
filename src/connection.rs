@@ -71,6 +71,13 @@ impl Connection {
 
                                     global_state.request_redraw();
                                 }
+                                Commands::DeviceConfig(device_config) => {
+                                    let mut selected_device_config_option = global_state
+                                        .selected_device_config_option_mutex
+                                        .lock_safe();
+
+                                    *selected_device_config_option = Some(device_config);
+                                }
                                 _ => {}
                             }
                         }

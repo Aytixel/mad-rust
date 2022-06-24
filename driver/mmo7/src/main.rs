@@ -23,21 +23,63 @@ const PID: u16 = 0x1713;
 
 #[derive(Deserialize, Serialize, Default)]
 pub struct ButtonConfigs {
-    scroll_button: [[String; 3]; 2],
-    left_actionlock: [[String; 3]; 2],
-    right_actionlock: [[String; 3]; 2],
-    forwards_button: [[String; 3]; 2],
-    back_button: [[String; 3]; 2],
-    thumb_anticlockwise: [[String; 3]; 2],
-    thumb_clockwise: [[String; 3]; 2],
-    hat_top: [[String; 3]; 2],
-    hat_left: [[String; 3]; 2],
-    hat_right: [[String; 3]; 2],
-    hat_bottom: [[String; 3]; 2],
-    button_1: [[String; 3]; 2],
-    precision_aim: [[String; 3]; 2],
-    button_2: [[String; 3]; 2],
-    button_3: [[String; 3]; 2],
+    scroll_button: [Vec<String>; 2],
+    left_actionlock: [Vec<String>; 2],
+    right_actionlock: [Vec<String>; 2],
+    forwards_button: [Vec<String>; 2],
+    back_button: [Vec<String>; 2],
+    thumb_anticlockwise: [Vec<String>; 2],
+    thumb_clockwise: [Vec<String>; 2],
+    hat_top: [Vec<String>; 2],
+    hat_left: [Vec<String>; 2],
+    hat_right: [Vec<String>; 2],
+    hat_bottom: [Vec<String>; 2],
+    button_1: [Vec<String>; 2],
+    precision_aim: [Vec<String>; 2],
+    button_2: [Vec<String>; 2],
+    button_3: [Vec<String>; 2],
+}
+
+impl ButtonConfigs {
+    fn to_config(&self) -> Vec<[Vec<String>; 2]> {
+        vec![
+            self.scroll_button.clone(),
+            self.left_actionlock.clone(),
+            self.right_actionlock.clone(),
+            self.forwards_button.clone(),
+            self.back_button.clone(),
+            self.thumb_anticlockwise.clone(),
+            self.thumb_clockwise.clone(),
+            self.hat_top.clone(),
+            self.hat_left.clone(),
+            self.hat_right.clone(),
+            self.hat_bottom.clone(),
+            self.button_1.clone(),
+            self.precision_aim.clone(),
+            self.button_2.clone(),
+            self.button_3.clone(),
+        ]
+    }
+
+    fn from_config(data: &Vec<[Vec<String>; 2]>) -> Self {
+        Self {
+            scroll_button: data[0].clone(),
+            left_actionlock: data[1].clone(),
+            right_actionlock: data[2].clone(),
+            forwards_button: data[3].clone(),
+            back_button: data[4].clone(),
+            thumb_anticlockwise: data[5].clone(),
+            thumb_clockwise: data[6].clone(),
+            hat_top: data[7].clone(),
+            hat_left: data[8].clone(),
+            hat_right: data[9].clone(),
+            hat_bottom: data[10].clone(),
+            button_1: data[11].clone(),
+            precision_aim: data[12].clone(),
+            button_2: data[13].clone(),
+            button_3: data[14].clone(),
+        }
+    }
 }
 
 type MousesConfig = BTreeMap<String, ButtonConfigs>;
@@ -62,24 +104,24 @@ fn main() {
         let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
         let (host, child) = DualChannel::<Message>::new();
         let icon_data = include_bytes!("../icon.png").to_vec();
-        let mouse_configs_mutex = Arc::new(Mutex::new(ConfigManager::<MousesConfig>::new(
+        let mouses_config_mutex = Arc::new(Mutex::new(ConfigManager::<MousesConfig>::new(
             "mmo7_profiles",
         )));
 
-        watch_config_update(mouse_configs_mutex.clone());
+        watch_config_update(mouses_config_mutex.clone());
         run_connection(
             client_dualchannel,
             child,
             device_list_mutex.clone(),
             icon_data,
-            mouse_configs_mutex.clone(),
+            mouses_config_mutex.clone(),
         );
-        listening_new_device(host, device_list_mutex, mouse_configs_mutex);
+        listening_new_device(host, device_list_mutex, mouses_config_mutex);
     }
 }
 
-fn watch_config_update(mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>) {
-    let mouse_configs_mutex = mouse_configs_mutex.clone();
+fn watch_config_update(mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>) {
+    let mouses_config_mutex = mouses_config_mutex.clone();
 
     spawn(move || {
         set_current_thread_priority(ThreadPriority::Min).ok();
@@ -88,9 +130,9 @@ fn watch_config_update(mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig
 
         loop {
             {
-                let mut mouse_configs = mouse_configs_mutex.lock_safe();
+                let mut mouses_config = mouses_config_mutex.lock_safe();
 
-                mouse_configs.update();
+                mouses_config.update();
             }
 
             timer.wait();
@@ -102,7 +144,7 @@ fn watch_config_update(mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig
 fn listening_new_device(
     host: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
-    mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
 ) {
     let mut timer = Timer::new(TIMEOUT_1S);
 
@@ -128,18 +170,18 @@ fn listening_new_device(
                                         if let None = device_list.get(&serial_number) {
                                             {
                                                 // create a default config if needed
-                                                let mut mouse_configs =
-                                                    mouse_configs_mutex.lock_safe();
+                                                let mut mouses_config =
+                                                    mouses_config_mutex.lock_safe();
 
-                                                if !mouse_configs
+                                                if !mouses_config
                                                     .config
                                                     .contains_key(&serial_number)
                                                 {
-                                                    mouse_configs.config.insert(
+                                                    mouses_config.config.insert(
                                                         serial_number.clone(),
                                                         ButtonConfigs::default(),
                                                     );
-                                                    mouse_configs.save();
+                                                    mouses_config.save();
                                                 }
                                             }
 
@@ -147,7 +189,7 @@ fn listening_new_device(
 
                                             let host = host.clone();
                                             let device_list_mutex = device_list_mutex.clone();
-                                            let mouse_configs_mutex = mouse_configs_mutex.clone();
+                                            let mouses_config_mutex = mouses_config_mutex.clone();
 
                                             spawn(move || {
                                                 set_current_thread_priority(ThreadPriority::Max)
@@ -156,7 +198,7 @@ fn listening_new_device(
                                                 run_device(
                                                     serial_number.clone(),
                                                     host.clone(),
-                                                    mouse_configs_mutex,
+                                                    mouses_config_mutex,
                                                 );
 
                                                 device_list_mutex
@@ -212,7 +254,7 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
 fn run_device(
     serial_number: String,
     dual_channel: DualChannel<Message>,
-    mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
 ) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
         let device = device_handle.device();
@@ -248,7 +290,7 @@ fn run_device(
                             dual_channel.send(Message::DeviceListUpdate);
 
                             let mut buffer = [0; 8];
-                            let mut mapper = Mapper::new(mouse_configs_mutex);
+                            let mut mapper = Mapper::new(mouses_config_mutex);
 
                             loop {
                                 match device_handle.read_interrupt(
@@ -285,7 +327,7 @@ fn run_connection(
     child: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     icon_data: Vec<u8>,
-    mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
 ) {
     spawn(move || {
         set_current_thread_priority(ThreadPriority::Min).ok();
@@ -325,7 +367,34 @@ fn run_connection(
 
                         update_device_list(&client_dualchannel, device_list_mutex.clone());
                     } else {
-                        println!("{:?}", data);
+                        match Commands::from(data) {
+                            Commands::RequestDeviceConfig(request_device_config) => {
+                                let mouses_config = mouses_config_mutex.lock_safe();
+
+                                if let Some(mouse_config) = mouses_config
+                                    .config
+                                    .get(&request_device_config.serial_number)
+                                {
+                                    client_dualchannel.send((
+                                        true,
+                                        DeviceConfig::new(
+                                            request_device_config.serial_number,
+                                            mouse_config.to_config(),
+                                        )
+                                        .to_bytes(),
+                                    ));
+                                }
+                            }
+                            Commands::DeviceConfig(device_config) => {
+                                let mut mouses_config = mouses_config_mutex.lock_safe();
+
+                                mouses_config.config.insert(
+                                    device_config.serial_number,
+                                    ButtonConfigs::from_config(&device_config.config),
+                                );
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
