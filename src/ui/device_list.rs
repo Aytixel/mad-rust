@@ -15,10 +15,10 @@ use image::load_from_memory;
 use util::thread::MutexTrait;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
-    AlphaType, BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, FilterOp,
-    IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags, ImageFormat, ImageKey,
-    ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue,
-    SpaceAndClipInfo,
+    AlphaType, BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties,
+    DynamicProperties, FilterOp, IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags,
+    ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey,
+    PropertyValue, SpaceAndClipInfo,
 };
 use webrender::Transaction;
 
@@ -257,6 +257,7 @@ impl DocumentTrait for DeviceList {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
+        clip_chain_id: ClipChainId,
         font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
@@ -277,7 +278,7 @@ impl DocumentTrait for DeviceList {
             builder.push_simple_stacking_context_with_filters(
                 LayoutPoint::zero(),
                 space_and_clip.spatial_id,
-                PrimitiveFlags::IS_BACKFACE_VISIBLE,
+                PrimitiveFlags::empty(),
                 &[FilterOp::Opacity(
                     PropertyBinding::Binding(device_data.property_key, device_data.animation.value),
                     device_data.animation.value,
@@ -293,8 +294,14 @@ impl DocumentTrait for DeviceList {
             );
 
             // add hit test
+            let clip_chain_id =
+                builder.define_clip_chain(Some(clip_chain_id), [space_and_clip.clip_id]);
+
             builder.push_hit_test(
-                device_button_common_item_properties,
+                device_button_layout_rect,
+                clip_chain_id,
+                space_and_clip.spatial_id,
+                PrimitiveFlags::empty(),
                 (
                     AppEvent::ChooseDeviceButton.into(),
                     device_id_vec.len() as u16,

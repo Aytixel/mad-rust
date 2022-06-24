@@ -8,8 +8,8 @@ use crate::window::FrameBuilder;
 use hashbrown::HashSet;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
-    BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, PropertyBinding,
-    PropertyValue,
+    BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties, DynamicProperties,
+    PrimitiveFlags, PropertyBinding, PropertyValue,
 };
 use webrender::Transaction;
 use winit::dpi::PhysicalSize;
@@ -93,6 +93,7 @@ impl App {
         title: &'static str,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
+        clip_chain_id: ClipChainId,
     ) {
         let builder = &mut frame_builder.builder;
 
@@ -111,7 +112,10 @@ impl App {
             ClipMode::Clip,
         );
         builder.push_hit_test(
-            title_bar_common_item_properties,
+            title_bar_layout_rect,
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::TitleBar.into(), 0),
         );
 
@@ -143,7 +147,10 @@ impl App {
             ClipMode::Clip,
         );
         builder.push_hit_test(
-            close_button_common_item_properties,
+            close_button_layout_rect,
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::CloseButton.into(), 0),
         );
 
@@ -165,7 +172,10 @@ impl App {
             ClipMode::Clip,
         );
         builder.push_hit_test(
-            maximize_button_common_item_properties,
+            maximize_button_layout_rect,
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::MaximizeButton.into(), 0),
         );
 
@@ -187,7 +197,10 @@ impl App {
             ClipMode::Clip,
         );
         builder.push_hit_test(
-            minimize_button_common_item_properties,
+            minimize_button_layout_rect,
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::MinimizeButton.into(), 0),
         );
     }

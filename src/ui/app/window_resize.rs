@@ -4,9 +4,7 @@ use crate::GlobalState;
 
 use hashbrown::HashSet;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
-use webrender::api::{
-    BorderRadius, ClipMode, CommonItemProperties, ComplexClipRegion, SpaceAndClipInfo,
-};
+use webrender::api::{BorderRadius, ClipMode, ComplexClipRegion, PrimitiveFlags};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::window::CursorIcon;
 
@@ -123,94 +121,91 @@ impl App {
                 ClipMode::ClipOut,
             ),
         );
-        let space_and_clip = SpaceAndClipInfo {
-            spatial_id: frame_builder.space_and_clip.spatial_id,
-            clip_id,
-        };
+        let clip_chain_id = builder.define_clip_chain(None, [clip_id]);
 
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(20.0, 0.0),
-                    LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(20.0, 0.0),
+                LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeTop.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(20.0, window_size.height as f32 - 5.0),
-                    LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(20.0, window_size.height as f32 - 5.0),
+                LayoutSize::new(window_size.width as f32 - 40.0, 5.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeBottom.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(0.0, 20.0),
-                    LayoutSize::new(5.0, window_size.height as f32 - 40.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(0.0, 20.0),
+                LayoutSize::new(5.0, window_size.height as f32 - 40.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeLeft.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(window_size.width as f32 - 5.0, 20.0),
-                    LayoutSize::new(5.0, window_size.height as f32 - 40.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(window_size.width as f32 - 5.0, 20.0),
+                LayoutSize::new(5.0, window_size.height as f32 - 40.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeRight.into(), 0),
         );
 
         // corners
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(0.0, 0.0),
-                    LayoutSize::new(20.0, 20.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(0.0, 0.0),
+                LayoutSize::new(20.0, 20.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeTopLeft.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(window_size.width as f32 - 20.0, 0.0),
-                    LayoutSize::new(20.0, 20.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(window_size.width as f32 - 20.0, 0.0),
+                LayoutSize::new(20.0, 20.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeTopRight.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(0.0, window_size.height as f32 - 20.0),
-                    LayoutSize::new(20.0, 20.0),
-                ),
-                space_and_clip,
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(0.0, window_size.height as f32 - 20.0),
+                LayoutSize::new(20.0, 20.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeBottomLeft.into(), 0),
         );
         builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(
-                        window_size.width as f32 - 20.0,
-                        window_size.height as f32 - 20.0,
-                    ),
-                    LayoutSize::new(20.0, 20.0),
+            LayoutRect::from_origin_and_size(
+                LayoutPoint::new(
+                    window_size.width as f32 - 20.0,
+                    window_size.height as f32 - 20.0,
                 ),
-                space_and_clip,
+                LayoutSize::new(20.0, 20.0),
             ),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::WindowResizeBottomRight.into(), 0),
         );
     }

@@ -12,9 +12,9 @@ use num_derive::FromPrimitive;
 use util::thread::MutexTrait;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
-    APZScrollGeneration, ColorF, CommonItemProperties, ExternalScrollId, HasScrollLinkedEffect,
-    HitTestItem, PipelineId, PrimitiveFlags, PropertyBindingKey, RenderReasons,
-    SampledScrollOffset, SpaceAndClipInfo, SpatialTreeItemKey,
+    APZScrollGeneration, ClipChainId, ColorF, CommonItemProperties, ExternalScrollId,
+    HasScrollLinkedEffect, HitTestItem, PipelineId, PrimitiveFlags, PropertyBindingKey,
+    RenderReasons, SampledScrollOffset, SpaceAndClipInfo, SpatialTreeItemKey,
 };
 use webrender::Transaction;
 use winit::dpi::PhysicalPosition;
@@ -318,7 +318,7 @@ impl WindowTrait<GlobalState> for App {
         frame_builder.builder.push_simple_stacking_context(
             frame_builder.bounds.min,
             frame_builder.space_and_clip.spatial_id,
-            PrimitiveFlags::IS_BACKFACE_VISIBLE,
+            PrimitiveFlags::empty(),
         );
 
         let background_size = LayoutRect::from_size(LayoutSize::new(
@@ -341,13 +341,18 @@ impl WindowTrait<GlobalState> for App {
         frame_builder.builder.push_simple_stacking_context(
             LayoutPoint::new(10.0, 55.0),
             frame_builder.space_and_clip.spatial_id,
-            PrimitiveFlags::IS_BACKFACE_VISIBLE,
+            PrimitiveFlags::empty(),
         );
+
+        let clip_chain_id = frame_builder
+            .builder
+            .define_clip_chain(None, [frame_builder.space_and_clip.clip_id]);
+
         frame_builder.builder.push_hit_test(
-            &CommonItemProperties::new(
-                LayoutRect::from_size(self.scroll_frame_size),
-                frame_builder.space_and_clip,
-            ),
+            LayoutRect::from_size(self.scroll_frame_size),
+            clip_chain_id,
+            frame_builder.space_and_clip.spatial_id,
+            PrimitiveFlags::empty(),
             (AppEvent::Scroll.into(), EXT_SCROLL_ID_ROOT as u16),
         );
 
@@ -375,6 +380,7 @@ impl WindowTrait<GlobalState> for App {
             self.scroll_frame_size,
             frame_builder,
             space_and_clip,
+            clip_chain_id,
             &self.font_hashmap,
             wrapper,
         );
@@ -386,6 +392,7 @@ impl WindowTrait<GlobalState> for App {
             self.document.get_title(),
             wrapper.window_size,
             frame_builder,
+            clip_chain_id,
         );
         self.draw_window_resize(wrapper.window_size, frame_builder);
 
@@ -436,6 +443,7 @@ pub trait DocumentTrait {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
+        clip_chain_id: ClipChainId,
         font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     );
