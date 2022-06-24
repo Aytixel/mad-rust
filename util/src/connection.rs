@@ -414,11 +414,11 @@ pub mod command {
     pub struct DeviceConfig {
         pub id: u8,
         pub serial_number: String,
-        pub config: Vec<Vec<String>>,
+        pub config: Vec<[Vec<String>; 2]>,
     }
 
     impl DeviceConfig {
-        pub fn new(serial_number: String, config: Vec<Vec<String>>) -> Self {
+        pub fn new(serial_number: String, config: Vec<[Vec<String>; 2]>) -> Self {
             Self {
                 id: DEVICE_CONFIG_ID,
                 serial_number,
