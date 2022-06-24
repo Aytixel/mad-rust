@@ -6,6 +6,7 @@ mod connection;
 mod ui;
 mod window;
 
+use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::thread::ThreadId;
@@ -54,10 +55,16 @@ impl DeviceId {
     }
 }
 
+enum ConnectionEvent {
+    RequestDeviceConfig(DeviceId),
+}
+
 pub struct GlobalState {
     do_redraw: AtomicBool,
     driver_hashmap_mutex: Mutex<HashMap<ThreadId, Driver>>,
     device_id_vec_mutex: Mutex<Vec<DeviceId>>,
+    selected_device_id_option_mutex: Mutex<Option<DeviceId>>,
+    connection_event_queue_mutex: Mutex<VecDeque<ConnectionEvent>>,
 }
 
 impl GlobalState {
@@ -66,7 +73,25 @@ impl GlobalState {
             do_redraw: AtomicBool::new(true),
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
             device_id_vec_mutex: Mutex::new(vec![]),
+            selected_device_id_option_mutex: Mutex::new(None),
+            connection_event_queue_mutex: Mutex::new(VecDeque::new()),
         })
+    }
+
+    fn push_connection_event(&self, event: ConnectionEvent) {
+        match self.connection_event_queue_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+        .push_back(event);
+    }
+
+    fn pop_connection_event(&self) -> Option<ConnectionEvent> {
+        match self.connection_event_queue_mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+        .pop_front()
     }
 }
 
