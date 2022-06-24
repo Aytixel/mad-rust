@@ -254,12 +254,16 @@ pub mod command {
 
     const DRIVER_CONFIGURATION_DESCRIPTOR_ID: u8 = 0;
     const DEVICE_LIST_ID: u8 = 1;
+    const REQUEST_DEVICE_CONFIG_ID: u8 = 2;
+    const DEVICE_CONFIG_ID: u8 = 3;
     const UNKNOWN_ID: u8 = 255;
 
     #[derive(Debug, Clone)]
     pub enum Commands {
         DriverConfigurationDescriptor(DriverConfigurationDescriptor),
         DeviceList(DeviceList),
+        RequestDeviceConfig(RequestDeviceConfig),
+        DeviceConfig(DeviceConfig),
         Unknown,
     }
 
@@ -274,6 +278,8 @@ pub mod command {
             match self {
                 Self::DriverConfigurationDescriptor(_) => DRIVER_CONFIGURATION_DESCRIPTOR_ID,
                 Self::DeviceList(_) => DEVICE_LIST_ID,
+                Self::RequestDeviceConfig(_) => REQUEST_DEVICE_CONFIG_ID,
+                Self::DeviceConfig(_) => DEVICE_CONFIG_ID,
                 Self::Unknown => UNKNOWN_ID,
             }
         }
@@ -286,6 +292,10 @@ pub mod command {
                     DriverConfigurationDescriptor::from_bytes(value),
                 ),
                 DEVICE_LIST_ID => Self::DeviceList(DeviceList::from_bytes(value)),
+                REQUEST_DEVICE_CONFIG_ID => {
+                    Self::RequestDeviceConfig(RequestDeviceConfig::from_bytes(value))
+                }
+                DEVICE_CONFIG_ID => Self::DeviceConfig(DeviceConfig::from_bytes(value)),
                 _ => Self::Unknown,
             }
         }
@@ -366,6 +376,58 @@ pub mod command {
     }
 
     impl CommandTrait for DeviceList {
+        fn to_bytes(&mut self) -> Vec<u8> {
+            bincode::serialize(&self).unwrap()
+        }
+
+        fn from_bytes(data: Vec<u8>) -> Self {
+            bincode::deserialize(&data).unwrap()
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Default, Debug)]
+    pub struct RequestDeviceConfig {
+        pub id: u8,
+        pub serial_number: String,
+    }
+
+    impl RequestDeviceConfig {
+        pub fn new(serial_number: String) -> Self {
+            Self {
+                id: REQUEST_DEVICE_CONFIG_ID,
+                serial_number,
+            }
+        }
+    }
+
+    impl CommandTrait for RequestDeviceConfig {
+        fn to_bytes(&mut self) -> Vec<u8> {
+            bincode::serialize(&self).unwrap()
+        }
+
+        fn from_bytes(data: Vec<u8>) -> Self {
+            bincode::deserialize(&data).unwrap()
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Default, Debug)]
+    pub struct DeviceConfig {
+        pub id: u8,
+        pub serial_number: String,
+        pub config: Vec<Vec<String>>,
+    }
+
+    impl DeviceConfig {
+        pub fn new(serial_number: String, config: Vec<Vec<String>>) -> Self {
+            Self {
+                id: DEVICE_CONFIG_ID,
+                serial_number,
+                config,
+            }
+        }
+    }
+
+    impl CommandTrait for DeviceConfig {
         fn to_bytes(&mut self) -> Vec<u8> {
             bincode::serialize(&self).unwrap()
         }

@@ -4,7 +4,7 @@ mod device_list;
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
-use crate::GlobalState;
+use crate::{ConnectionEvent, GlobalState};
 
 use hashbrown::{HashMap, HashSet};
 use num::FromPrimitive;
@@ -108,7 +108,19 @@ impl App {
                                     Ok(guard) => guard,
                                     Err(poisoned) => poisoned.into_inner(),
                                 };
-                            println!("{:?}", device_id_vec[hit_items[0].tag.1 as usize]);
+                            let mut selected_device_id_option =
+                                match wrapper.global_state.selected_device_id_option_mutex.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => poisoned.into_inner(),
+                                };
+
+                            *selected_device_id_option =
+                                Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
+                            wrapper.global_state.push_connection_event(
+                                ConnectionEvent::RequestDeviceConfig(
+                                    device_id_vec[hit_items[0].tag.1 as usize].clone(),
+                                ),
+                            );
                         }
                         _ => {}
                     },
