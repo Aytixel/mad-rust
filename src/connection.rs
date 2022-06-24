@@ -7,6 +7,7 @@ use crate::{ConnectionEvent, Driver, GlobalState};
 
 use util::connection::command::{CommandTrait, Commands, RequestDeviceConfig};
 use util::connection::Server;
+use util::thread::MutexTrait;
 use util::time::Timer;
 
 pub struct Connection {
@@ -49,10 +50,7 @@ impl Connection {
 
                 // receive data from clients
                 if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
-                    let mut driver_hashmap = match global_state.driver_hashmap_mutex.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
+                    let mut driver_hashmap = global_state.driver_hashmap_mutex.lock_safe();
 
                     if is_running {
                         if data.len() > 0 {

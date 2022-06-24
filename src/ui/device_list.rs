@@ -12,6 +12,7 @@ use crate::{DeviceId, GlobalState};
 use hashbrown::{HashMap, HashSet};
 use image::imageops::{resize, FilterType};
 use image::load_from_memory;
+use util::thread::MutexTrait;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     AlphaType, BorderRadius, ClipMode, ColorF, CommonItemProperties, DynamicProperties, FilterOp,
@@ -90,10 +91,7 @@ impl DocumentTrait for DeviceList {
     }
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
-        let driver_hashmap = match wrapper.global_state.driver_hashmap_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
         let mut floats = vec![];
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();
         let mut device_icon_to_keep_hashset = HashSet::new();
@@ -145,10 +143,7 @@ impl DocumentTrait for DeviceList {
         mut frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
-        let driver_hashmap = match wrapper.global_state.driver_hashmap_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
         let mut device_button_layout_point = LayoutPoint::zero();
         let mut device_data_to_keep_hashset = HashSet::new();
 
@@ -267,10 +262,7 @@ impl DocumentTrait for DeviceList {
     ) {
         let builder = &mut frame_builder.builder;
         let mut device_button_layout_point = LayoutPoint::zero();
-        let mut device_id_vec = match wrapper.global_state.device_id_vec_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut device_id_vec = wrapper.global_state.device_id_vec_mutex.lock_safe();
 
         device_id_vec.clear();
 

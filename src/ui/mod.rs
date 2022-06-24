@@ -9,6 +9,7 @@ use crate::{ConnectionEvent, GlobalState};
 use hashbrown::{HashMap, HashSet};
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
+use util::thread::MutexTrait;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
     APZScrollGeneration, ColorF, CommonItemProperties, ExternalScrollId, HasScrollLinkedEffect,
@@ -104,15 +105,11 @@ impl App {
                         AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
                         AppEvent::ChooseDeviceButton => {
                             let device_id_vec =
-                                match wrapper.global_state.device_id_vec_mutex.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => poisoned.into_inner(),
-                                };
-                            let mut selected_device_id_option =
-                                match wrapper.global_state.selected_device_id_option_mutex.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => poisoned.into_inner(),
-                                };
+                                wrapper.global_state.device_id_vec_mutex.lock_safe();
+                            let mut selected_device_id_option = wrapper
+                                .global_state
+                                .selected_device_id_option_mutex
+                                .lock_safe();
 
                             *selected_device_id_option =
                                 Some(device_id_vec[hit_items[0].tag.1 as usize].clone());

@@ -15,6 +15,7 @@ use connection::Connection;
 use ui::App;
 
 use hashbrown::HashMap;
+use util::thread::MutexTrait;
 use util::{
     connection::command::{DeviceList, DriverConfigurationDescriptor},
     thread::kill_double,
@@ -79,19 +80,13 @@ impl GlobalState {
     }
 
     fn push_connection_event(&self, event: ConnectionEvent) {
-        match self.connection_event_queue_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-        .push_back(event);
+        self.connection_event_queue_mutex
+            .lock_safe()
+            .push_back(event);
     }
 
     fn pop_connection_event(&self) -> Option<ConnectionEvent> {
-        match self.connection_event_queue_mutex.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-        .pop_front()
+        self.connection_event_queue_mutex.lock_safe().pop_front()
     }
 }
 

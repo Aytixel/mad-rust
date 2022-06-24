@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use util::config::ConfigManager;
 use util::connection::{command::*, Client};
-use util::thread::{kill_double, DualChannel};
+use util::thread::{kill_double, DualChannel, MutexTrait};
 use util::time::{Timer, TIMEOUT_1S};
 
 const VID: u16 = 0x0738;
@@ -103,10 +103,7 @@ fn watch_config_update(mouse_configs_mutex: Arc<Mutex<ConfigManager<MouseConfigs
 
         loop {
             {
-                let mut mouse_configs = match mouse_configs_mutex.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
+                let mut mouse_configs = mouse_configs_mutex.lock_safe();
 
                 mouse_configs.update();
             }
@@ -141,19 +138,13 @@ fn listening_new_device(
                                             TIMEOUT_1S,
                                         )
                                     {
-                                        let mut device_list = match device_list_mutex.lock() {
-                                            Ok(guard) => guard,
-                                            Err(poisoned) => poisoned.into_inner(),
-                                        };
+                                        let mut device_list = device_list_mutex.lock_safe();
 
                                         if let None = device_list.get(&serial_number) {
                                             {
                                                 // create a default config if needed
                                                 let mut mouse_configs =
-                                                    match mouse_configs_mutex.lock() {
-                                                        Ok(guard) => guard,
-                                                        Err(poisoned) => poisoned.into_inner(),
-                                                    };
+                                                    mouse_configs_mutex.lock_safe();
 
                                                 if !mouse_configs
                                                     .config
@@ -183,11 +174,9 @@ fn listening_new_device(
                                                     mouse_configs_mutex,
                                                 );
 
-                                                match device_list_mutex.lock() {
-                                                    Ok(guard) => guard,
-                                                    Err(poisoned) => poisoned.into_inner(),
-                                                }
-                                                .remove(&serial_number);
+                                                device_list_mutex
+                                                    .lock_safe()
+                                                    .remove(&serial_number);
 
                                                 host.send(Message::DeviceListUpdate);
                                             });
@@ -376,12 +365,7 @@ fn update_device_list(
 ) {
     let mut serial_number_vec = vec![];
 
-    for serial_number in match device_list_mutex.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-    .iter()
-    {
+    for serial_number in device_list_mutex.lock_safe().iter() {
         serial_number_vec.push(serial_number.clone());
     }
 
