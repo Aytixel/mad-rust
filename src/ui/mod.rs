@@ -1,9 +1,12 @@
 mod app;
+mod device_configurator;
 mod device_list;
 
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
-use crate::window::{Event, Font, FrameBuilder, WindowInitTrait, WindowTrait, WindowWrapper};
+use crate::window::{
+    Event, Font, FrameBuilder, GlobalStateTrait, WindowInitTrait, WindowTrait, WindowWrapper,
+};
 use crate::{ConnectionEvent, GlobalState};
 
 use hashbrown::{HashMap, HashSet};
@@ -20,6 +23,7 @@ use webrender::Transaction;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
+use self::device_configurator::DeviceConfigurator;
 use self::device_list::DeviceList;
 
 const EXT_SCROLL_ID_ROOT: u64 = 0;
@@ -38,6 +42,7 @@ pub enum AppEvent {
     CloseButton,
     MaximizeButton,
     MinimizeButton,
+    ReturnButton,
     TitleBar,
     ChooseDeviceButton,
 }
@@ -64,9 +69,11 @@ pub struct App {
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
     minimize_button_color_key: PropertyBindingKey<ColorF>,
+    return_button_color_key: PropertyBindingKey<ColorF>,
     close_button_color_animation: Animation<ColorF>,
     maximize_button_color_animation: Animation<ColorF>,
     minimize_button_color_animation: Animation<ColorF>,
+    return_button_color_animation: Animation<ColorF>,
     scroll_offset: LayoutVector2D,
     scroll_frame_size: LayoutSize,
     scroll_content_size: LayoutSize,
@@ -75,6 +82,17 @@ pub struct App {
 }
 
 impl App {
+    fn switch_document(
+        &mut self,
+        new_document: Box<dyn DocumentTrait>,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
+        self.document.unload(wrapper);
+        self.document = new_document;
+
+        wrapper.global_state.request_redraw();
+    }
+
     fn calculate_event(
         &mut self,
         hit_items: Vec<HitTestItem>,
@@ -103,7 +121,24 @@ impl App {
                             .window()
                             .set_maximized(!wrapper.context.window().is_maximized()),
                         AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
+                        AppEvent::ReturnButton => {
+                            self.switch_document(Box::new(DeviceList::new()), wrapper);
+
+                            let mut selected_device_id_option = wrapper
+                                .global_state
+                                .selected_device_id_option_mutex
+                                .lock_safe();
+                            let mut selected_device_config_option = wrapper
+                                .global_state
+                                .selected_device_config_option_mutex
+                                .lock_safe();
+
+                            *selected_device_id_option = None;
+                            *selected_device_config_option = None;
+                        }
                         AppEvent::ChooseDeviceButton => {
+                            self.switch_document(Box::new(DeviceConfigurator::new()), wrapper);
+
                             let device_id_vec =
                                 wrapper.global_state.device_id_vec_mutex.lock_safe();
                             let mut selected_device_id_option = wrapper
@@ -145,7 +180,8 @@ impl App {
                 | AppEvent::WindowResizeRight
                 | AppEvent::CloseButton
                 | AppEvent::MaximizeButton
-                | AppEvent::MinimizeButton = event
+                | AppEvent::MinimizeButton
+                | AppEvent::ReturnButton = event
                 {
                     new_over_state.insert(event);
                 }
@@ -230,6 +266,7 @@ impl WindowInitTrait<GlobalState> for App {
             close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             minimize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
+            return_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
             close_button_color_animation: Animation::new(
                 ColorF::new_u(255, 79, 0, 100),
                 over_color_animation,
@@ -240,6 +277,10 @@ impl WindowInitTrait<GlobalState> for App {
             ),
             minimize_button_color_animation: Animation::new(
                 ColorF::new_u(50, 221, 23, 100),
+                over_color_animation,
+            ),
+            return_button_color_animation: Animation::new(
+                ColorF::new_u(33, 33, 33, 100),
                 over_color_animation,
             ),
             scroll_offset: LayoutVector2D::zero(),
@@ -393,6 +434,7 @@ impl WindowTrait<GlobalState> for App {
             wrapper.window_size,
             frame_builder,
             clip_chain_id,
+            wrapper.global_state.clone(),
         );
         self.draw_window_resize(wrapper.window_size, frame_builder);
 
