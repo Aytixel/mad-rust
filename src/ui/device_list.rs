@@ -331,31 +331,39 @@ impl DocumentTrait for DeviceList {
                 );
             }
 
-            font_hashmap["OpenSans_13px"].push_text(
-                builder,
-                device_data
-                    .device_name
-                    .get(0..device_data.device_name.len().min(16))
-                    .unwrap_or_default()
-                    .to_string(),
-                ColorF::new_u(255, 255, 255, 200),
-                device_button_layout_point + LayoutSize::new(7.5, 7.5),
-                space_and_clip,
-                None,
-            );
-            font_hashmap["OpenSans_10px"].push_text(
-                builder,
-                device_data
-                    .device_id
-                    .serial_number
-                    .get(0..device_data.device_id.serial_number.len().min(21))
-                    .unwrap_or_default()
-                    .to_string(),
-                ColorF::new_u(255, 255, 255, 100),
-                device_button_layout_point + LayoutSize::new(7.5, 130.0),
-                space_and_clip,
-                None,
-            );
+            font_hashmap["OpenSans_13px"]
+                .create_text(
+                    device_data
+                        .device_name
+                        .get(0..device_data.device_name.len().min(16))
+                        .unwrap_or_default()
+                        .to_string(),
+                    None,
+                )
+                .push_text(
+                    builder,
+                    space_and_clip,
+                    device_button_layout_point + LayoutSize::new(7.5, 7.5),
+                    ColorF::new_u(255, 255, 255, 200),
+                    None,
+                );
+            font_hashmap["OpenSans_10px"]
+                .create_text(
+                    device_data
+                        .device_id
+                        .serial_number
+                        .get(0..device_data.device_id.serial_number.len().min(21))
+                        .unwrap_or_default()
+                        .to_string(),
+                    None,
+                )
+                .push_text(
+                    builder,
+                    space_and_clip,
+                    device_button_layout_point + LayoutSize::new(7.5, 130.0),
+                    ColorF::new_u(255, 255, 255, 100),
+                    None,
+                );
             builder.pop_stacking_context();
 
             // calculate the next button position

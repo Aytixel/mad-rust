@@ -4,7 +4,7 @@ use std::rc::Rc;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     ColorF, CommonItemProperties, DisplayListBuilder, DocumentId, FontInstanceKey, FontKey,
-    GlyphInstance, SpaceAndClipInfo,
+    GlyphDimensions, GlyphInstance, GlyphOptions, SpaceAndClipInfo,
 };
 use webrender::render_api::{RenderApi, Transaction};
 
@@ -45,15 +45,7 @@ impl Font {
         }
     }
 
-    pub fn push_text(
-        &self,
-        builder: &mut DisplayListBuilder,
-        text: String,
-        color: ColorF,
-        position: LayoutPoint,
-        space_and_clip: SpaceAndClipInfo,
-        tab_size_option: Option<f32>,
-    ) -> LayoutRect {
+    pub fn create_text(&self, text: String, tab_size_option: Option<f32>) -> Text {
         let char_vec: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
             tab_size
@@ -71,10 +63,7 @@ impl Font {
             .api
             .borrow()
             .get_glyph_dimensions(self.instance_key, glyph_indices.clone());
-        let mut glyph_instances = vec![];
-        let mut glyph_position = position;
         let mut glyph_size = LayoutSize::new(0.0, self.size.to_f32_px());
-        let mut line_count = 1.0;
         let mut char_width_mean = 0.0;
         let mut char_width_count = 0;
         let mut max_line_height = 0.0f32;
@@ -88,15 +77,8 @@ impl Font {
 
         char_width_mean /= char_width_count as f32;
 
-        for (index, glyph_indice) in glyph_indices.into_iter().enumerate() {
+        for index in 0..glyph_indices.len() {
             if let Some(glyph_dimension) = glyph_dimension_options[index] {
-                glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
-                glyph_instances.push(GlyphInstance {
-                    index: glyph_indice,
-                    point: glyph_position,
-                });
-                glyph_position +=
-                    LayoutSize::new(glyph_dimension.advance, -(self.size.to_f32_px()));
                 glyph_size += LayoutSize::new(glyph_dimension.advance, 0.0);
                 max_line_height = max_line_height.max(
                     self.size.to_f32_px() - glyph_dimension.top as f32
@@ -104,19 +86,10 @@ impl Font {
                 );
             } else {
                 match char_vec[index] {
-                    ' ' => {
-                        glyph_position += LayoutSize::new(char_width_mean, 0.0);
-                        glyph_size += LayoutSize::new(char_width_mean, 0.0);
-                    }
-                    '\t' => {
-                        glyph_position += LayoutSize::new(char_width_mean * tab_size, 0.0);
-                        glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0);
-                    }
+                    ' ' => glyph_size += LayoutSize::new(char_width_mean, 0.0),
+                    '\t' => glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0),
                     '\n' | '\r' => {
-                        glyph_position = position;
-                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
                         glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
-                        line_count += 1.0;
                         max_line_height = 0.0;
                     }
                     _ => {}
@@ -124,26 +97,23 @@ impl Font {
             }
         }
 
-        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
+        // glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
 
         // add extra height on the last line for letters like "g" which goes further down
         if self.size.to_f32_px() != max_line_height {
             glyph_size += LayoutSize::new(0.0, max_line_height - self.size.to_f32_px())
         }
 
-        let text_bounds =
-            LayoutRect::from_origin_and_size(position, glyph_size.to_vector().to_size());
-
-        builder.push_text(
-            &CommonItemProperties::new(text_bounds, space_and_clip),
-            text_bounds,
-            &glyph_instances,
+        Text::new(
+            glyph_size,
+            char_vec,
+            glyph_indices,
+            glyph_dimension_options,
+            self.size,
             self.instance_key,
-            color,
-            None,
-        );
-
-        text_bounds
+            char_width_mean,
+            tab_size,
+        )
     }
 
     pub fn unload(&mut self) {
@@ -154,5 +124,94 @@ impl Font {
         self.api
             .borrow_mut()
             .send_transaction(self.document_id, txn);
+    }
+}
+
+pub struct Text {
+    pub size: LayoutSize,
+    pub char_vec: Vec<char>,
+    pub glyph_indices: Vec<u32>,
+    pub glyph_dimension_options: Vec<Option<GlyphDimensions>>,
+    pub font_size: Au,
+    instance_key: FontInstanceKey,
+    char_width_mean: f32,
+    tab_size: f32,
+}
+
+impl Text {
+    fn new(
+        size: LayoutSize,
+        char_vec: Vec<char>,
+        glyph_indices: Vec<u32>,
+        glyph_dimension_options: Vec<Option<GlyphDimensions>>,
+        font_size: Au,
+        instance_key: FontInstanceKey,
+        char_width_mean: f32,
+        tab_size: f32,
+    ) -> Self {
+        Self {
+            size,
+            char_vec,
+            glyph_indices,
+            glyph_dimension_options,
+            font_size,
+            instance_key,
+            char_width_mean,
+            tab_size,
+        }
+    }
+
+    pub fn push_text(
+        &self,
+        builder: &mut DisplayListBuilder,
+        space_and_clip: SpaceAndClipInfo,
+        position: LayoutPoint,
+        color: ColorF,
+        glyph_options: Option<GlyphOptions>,
+    ) {
+        let mut glyph_instances = vec![];
+        let mut glyph_position = position;
+        let mut line_count = 1.0;
+
+        for (index, glyph_indice) in self.glyph_indices.iter().enumerate() {
+            if let Some(glyph_dimension) = self.glyph_dimension_options[index] {
+                glyph_position += LayoutSize::new(0.0, self.font_size.to_f32_px());
+                glyph_instances.push(GlyphInstance {
+                    index: *glyph_indice,
+                    point: glyph_position,
+                });
+                glyph_position +=
+                    LayoutSize::new(glyph_dimension.advance, -(self.font_size.to_f32_px()));
+            } else {
+                match self.char_vec[index] {
+                    ' ' => {
+                        glyph_position += LayoutSize::new(self.char_width_mean, 0.0);
+                    }
+                    '\t' => {
+                        glyph_position +=
+                            LayoutSize::new(self.char_width_mean * self.tab_size, 0.0);
+                    }
+                    '\n' | '\r' => {
+                        glyph_position = position;
+                        glyph_position +=
+                            LayoutSize::new(0.0, self.font_size.to_f32_px() * line_count);
+                        line_count += 1.0;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let text_bounds =
+            LayoutRect::from_origin_and_size(position, self.size.to_vector().to_size());
+
+        builder.push_text(
+            &CommonItemProperties::new(text_bounds, space_and_clip),
+            text_bounds,
+            &glyph_instances,
+            self.instance_key,
+            color,
+            glyph_options,
+        );
     }
 }
