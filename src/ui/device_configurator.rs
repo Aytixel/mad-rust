@@ -1,7 +1,9 @@
+use std::{cell::RefCell, rc::Rc};
+
 use hashbrown::HashMap;
 use webrender::{
-    api::{units::LayoutSize, ClipChainId, SpaceAndClipInfo},
-    Transaction,
+    api::{units::LayoutSize, ClipChainId, DocumentId, SpaceAndClipInfo},
+    RenderApi, Transaction,
 };
 
 use crate::{
@@ -45,5 +47,5 @@ impl DocumentTrait for DeviceConfigurator {
     ) {
     }
 
-    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {}
+    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId) {}
 }

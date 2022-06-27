@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::thread::ThreadId;
 use std::time::Duration;
@@ -15,12 +16,12 @@ use image::load_from_memory;
 use util::thread::MutexTrait;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
-    AlphaType, BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties,
+    AlphaType, BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties, DocumentId,
     DynamicProperties, FilterOp, IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags,
     ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey,
     PropertyValue, SpaceAndClipInfo,
 };
-use webrender::Transaction;
+use webrender::{RenderApi, Transaction};
 
 use super::AppEvent;
 
@@ -368,17 +369,14 @@ impl DocumentTrait for DeviceList {
         }
     }
 
-    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
+    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId) {
         for device_icon_option in self.device_icon_option_hashmap.values() {
             // unload image
             if let Some(device_icon) = device_icon_option {
                 let mut txn = Transaction::new();
 
                 txn.delete_image(device_icon.image_key);
-                wrapper
-                    .api
-                    .borrow_mut()
-                    .send_transaction(wrapper.document_id, txn);
+                api.borrow_mut().send_transaction(document_id, txn);
             }
         }
     }

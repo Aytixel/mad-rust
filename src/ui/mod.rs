@@ -2,24 +2,29 @@ mod app;
 mod device_configurator;
 mod device_list;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::{Arc, MutexGuard};
+
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{
     Event, Font, FrameBuilder, GlobalStateTrait, WindowInitTrait, WindowTrait, WindowWrapper,
 };
-use crate::{ConnectionEvent, GlobalState};
+use crate::{ConnectionEvent, DeviceId, GlobalState};
 
 use hashbrown::{HashMap, HashSet};
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
+use util::connection::command::DeviceConfig;
 use util::thread::MutexTrait;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
-    APZScrollGeneration, ClipChainId, ColorF, CommonItemProperties, ExternalScrollId,
+    APZScrollGeneration, ClipChainId, ColorF, CommonItemProperties, DocumentId, ExternalScrollId,
     HasScrollLinkedEffect, HitTestItem, PipelineId, PrimitiveFlags, PropertyBindingKey,
     RenderReasons, SampledScrollOffset, SpaceAndClipInfo, SpatialTreeItemKey,
 };
-use webrender::Transaction;
+use webrender::{RenderApi, Transaction};
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
@@ -85,12 +90,14 @@ impl App {
     fn switch_document(
         &mut self,
         new_document: Box<dyn DocumentTrait>,
-        wrapper: &mut WindowWrapper<GlobalState>,
+        api: Rc<RefCell<RenderApi>>,
+        document_id: DocumentId,
+        global_state: Arc<GlobalState>,
     ) {
-        self.document.unload(wrapper);
+        self.document.unload(api, document_id);
         self.document = new_document;
 
-        wrapper.global_state.request_redraw();
+        global_state.request_redraw();
     }
 
     fn calculate_event(
@@ -122,7 +129,12 @@ impl App {
                             .set_maximized(!wrapper.context.window().is_maximized()),
                         AppEvent::MinimizeButton => wrapper.context.window().set_minimized(true),
                         AppEvent::ReturnButton => {
-                            self.switch_document(Box::new(DeviceList::new()), wrapper);
+                            self.switch_document(
+                                Box::new(DeviceList::new()),
+                                wrapper.api.clone(),
+                                wrapper.document_id,
+                                wrapper.global_state.clone(),
+                            );
 
                             let mut selected_device_id_option = wrapper
                                 .global_state
@@ -137,7 +149,12 @@ impl App {
                             *selected_device_config_option = None;
                         }
                         AppEvent::ChooseDeviceButton => {
-                            self.switch_document(Box::new(DeviceConfigurator::new()), wrapper);
+                            self.switch_document(
+                                Box::new(DeviceConfigurator::new()),
+                                wrapper.api.clone(),
+                                wrapper.document_id,
+                                wrapper.global_state.clone(),
+                            );
 
                             let device_id_vec =
                                 wrapper.global_state.device_id_vec_mutex.lock_safe();
@@ -233,6 +250,47 @@ impl App {
 
                     break;
                 }
+            }
+        }
+    }
+
+    fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
+        // switch back to device list when the device disconnect
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
+        let selected_device_id_option = wrapper
+            .global_state
+            .selected_device_id_option_mutex
+            .lock_safe();
+        let selected_device_config_option = wrapper
+            .global_state
+            .selected_device_config_option_mutex
+            .lock_safe();
+
+        let mut switch_to_device_list =
+            |mut selected_device_id_option: MutexGuard<Option<DeviceId>>,
+             mut selected_device_config_option: MutexGuard<Option<DeviceConfig>>| {
+                self.switch_document(
+                    Box::new(DeviceList::new()),
+                    wrapper.api.clone(),
+                    wrapper.document_id,
+                    wrapper.global_state.clone(),
+                );
+
+                *selected_device_id_option = None;
+                *selected_device_config_option = None;
+            };
+
+        if let Some(selected_device_id) = selected_device_id_option.clone() {
+            if let Some(driver) = driver_hashmap.get(&selected_device_id.thread_id) {
+                if !driver
+                    .device_list
+                    .serial_number_vec
+                    .contains(&selected_device_id.serial_number)
+                {
+                    switch_to_device_list(selected_device_id_option, selected_device_config_option);
+                }
+            } else {
+                switch_to_device_list(selected_device_id_option, selected_device_config_option);
             }
         }
     }
@@ -347,6 +405,7 @@ impl WindowTrait<GlobalState> for App {
     }
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
+        self.update_app_state(wrapper);
         self.animate_title_bar(txn);
         self.document.animate(txn, wrapper);
     }
@@ -465,7 +524,8 @@ impl WindowTrait<GlobalState> for App {
             font.unload();
         }
 
-        self.document.unload(wrapper);
+        self.document
+            .unload(wrapper.api.clone(), wrapper.document_id);
     }
 }
 
@@ -490,5 +550,5 @@ pub trait DocumentTrait {
         wrapper: &mut WindowWrapper<GlobalState>,
     );
 
-    fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>);
+    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId);
 }
