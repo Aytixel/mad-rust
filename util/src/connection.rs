@@ -63,7 +63,8 @@ pub mod server {
                                             // life packet
                                             last_packet_receive = Instant::now();
 
-                                            if size != u64::MAX {
+                                            // if the packet is bigger than 20 Megabyte it's considered as life packet
+                                            if size < 20000000 {
                                                 let mut buffer = vec![0; size as usize];
 
                                                 if let Ok(_) = socket.read_exact(&mut buffer) {
@@ -200,7 +201,8 @@ pub mod client {
                                     // life packet
                                     last_packet_receive = Instant::now();
 
-                                    if size != u64::MAX {
+                                    // if the packet is bigger than 20 Megabyte it's considered as life packet
+                                    if size < 20000000 {
                                         let mut buffer = vec![0; size as usize];
 
                                         if let Ok(_) = socket.read_exact(&mut buffer) {
