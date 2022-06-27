@@ -178,7 +178,7 @@ impl App {
 
             // arrow
             let spatial_id = builder.push_reference_frame(
-                LayoutPoint::new(32.0, 27.43),
+                LayoutPoint::new(32.0, 27.5),
                 frame_builder.space_and_clip.spatial_id,
                 TransformStyle::Flat,
                 PropertyBinding::Value(LayoutTransform::rotation(
@@ -217,7 +217,7 @@ impl App {
             builder.push_border(
                 return_border_common_item_properties,
                 return_border_layout_rect,
-                LayoutSideOffsets::new_all_same(1.5),
+                LayoutSideOffsets::new_all_same(1.0),
                 BorderDetails::Normal(NormalBorder {
                     left: white_border_side,
                     right: transparent_border_side,
