@@ -54,7 +54,7 @@ impl Font {
         space_and_clip: SpaceAndClipInfo,
         tab_size_option: Option<f32>,
     ) -> LayoutRect {
-        let char_iterator: Vec<char> = text.chars().collect();
+        let char_vec: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
             tab_size
         } else {
@@ -77,6 +77,7 @@ impl Font {
         let mut line_count = 1.0;
         let mut char_width_mean = 0.0;
         let mut char_width_count = 0;
+        let mut max_line_height = 0.0f32;
 
         for glyph_dimension_option in glyph_dimension_options.clone() {
             if let Some(glyph_dimension) = glyph_dimension_option {
@@ -97,8 +98,12 @@ impl Font {
                 glyph_position +=
                     LayoutSize::new(glyph_dimension.advance, -(self.size.to_f32_px()));
                 glyph_size += LayoutSize::new(glyph_dimension.advance, 0.0);
+                max_line_height = max_line_height.max(
+                    self.size.to_f32_px() - glyph_dimension.top as f32
+                        + glyph_dimension.height as f32,
+                );
             } else {
-                match char_iterator[index] {
+                match char_vec[index] {
                     ' ' => {
                         glyph_position += LayoutSize::new(char_width_mean, 0.0);
                         glyph_size += LayoutSize::new(char_width_mean, 0.0);
@@ -107,17 +112,12 @@ impl Font {
                         glyph_position += LayoutSize::new(char_width_mean * tab_size, 0.0);
                         glyph_size += LayoutSize::new(char_width_mean * tab_size, 0.0);
                     }
-                    '\n' => {
+                    '\n' | '\r' => {
                         glyph_position = position;
                         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
                         glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
                         line_count += 1.0;
-                    }
-                    '\r' => {
-                        glyph_position = position;
-                        glyph_position += LayoutSize::new(0.0, self.size.to_f32_px() * line_count);
-                        glyph_size += LayoutSize::new(0.0, self.size.to_f32_px());
-                        line_count += 1.0;
+                        max_line_height = 0.0;
                     }
                     _ => {}
                 }
@@ -125,6 +125,11 @@ impl Font {
         }
 
         glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
+
+        // add extra height on the last line for letters like "g" which goes further down
+        if self.size.to_f32_px() != max_line_height {
+            glyph_size += LayoutSize::new(0.0, max_line_height - self.size.to_f32_px())
+        }
 
         let text_bounds =
             LayoutRect::from_origin_and_size(position, glyph_size.to_vector().to_size());
