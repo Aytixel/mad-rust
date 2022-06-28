@@ -21,27 +21,29 @@ use util::time::{Timer, TIMEOUT_1S};
 const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
 
-#[derive(Deserialize, Serialize, Default)]
+type ButtonConfig = [Vec<String>; 2];
+
+#[derive(Deserialize, Serialize, Clone, Default)]
 pub struct ButtonConfigs {
-    scroll_button: [Vec<String>; 2],
-    left_actionlock: [Vec<String>; 2],
-    right_actionlock: [Vec<String>; 2],
-    forwards_button: [Vec<String>; 2],
-    back_button: [Vec<String>; 2],
-    thumb_anticlockwise: [Vec<String>; 2],
-    thumb_clockwise: [Vec<String>; 2],
-    hat_top: [Vec<String>; 2],
-    hat_left: [Vec<String>; 2],
-    hat_right: [Vec<String>; 2],
-    hat_bottom: [Vec<String>; 2],
-    button_1: [Vec<String>; 2],
-    precision_aim: [Vec<String>; 2],
-    button_2: [Vec<String>; 2],
-    button_3: [Vec<String>; 2],
+    scroll_button: ButtonConfig,
+    left_actionlock: ButtonConfig,
+    right_actionlock: ButtonConfig,
+    forwards_button: ButtonConfig,
+    back_button: ButtonConfig,
+    thumb_anticlockwise: ButtonConfig,
+    thumb_clockwise: ButtonConfig,
+    hat_top: ButtonConfig,
+    hat_left: ButtonConfig,
+    hat_right: ButtonConfig,
+    hat_bottom: ButtonConfig,
+    button_1: ButtonConfig,
+    precision_aim: ButtonConfig,
+    button_2: ButtonConfig,
+    button_3: ButtonConfig,
 }
 
 impl ButtonConfigs {
-    fn to_config(&self) -> Vec<[Vec<String>; 2]> {
+    fn to_config(&self) -> Vec<ButtonConfig> {
         vec![
             self.scroll_button.clone(),
             self.left_actionlock.clone(),
@@ -61,7 +63,7 @@ impl ButtonConfigs {
         ]
     }
 
-    fn from_config(data: &Vec<[Vec<String>; 2]>) -> Self {
+    fn from_config(data: &Vec<ButtonConfig>) -> Self {
         Self {
             scroll_button: data[0].clone(),
             left_actionlock: data[1].clone(),
@@ -290,7 +292,8 @@ fn run_device(
                             dual_channel.send(Message::DeviceListUpdate);
 
                             let mut buffer = [0; 8];
-                            let mut mapper = Mapper::new(mouses_config_mutex);
+                            let mut mapper =
+                                Mapper::new(mouses_config_mutex, serial_number.clone());
 
                             loop {
                                 match device_handle.read_interrupt(

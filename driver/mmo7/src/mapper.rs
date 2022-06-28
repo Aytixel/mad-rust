@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use enigo::{Enigo, MouseButton, MouseControllable};
-use util::config::ConfigManager;
+use util::{config::ConfigManager, thread::MutexTrait};
 
-use crate::MousesConfig;
+use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
 
 struct ClickState {
     left: bool,
@@ -29,21 +29,28 @@ struct ButtonState {
     button_3: bool,
 }
 
+enum Mode {
+    Normal(u8),
+    Shift(u8),
+}
+
 pub struct Mapper {
     enigo: Enigo,
-    pub mode: Option<u8>,
-    pub shift_mode: Option<u8>,
+    mode: Mode,
     click_state: ClickState,
     button_state: ButtonState,
     mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    serial_number: String,
 }
 
 impl Mapper {
-    pub fn new(mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>) -> Self {
+    pub fn new(
+        mouse_configs_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+        serial_number: String,
+    ) -> Self {
         Self {
             enigo: Enigo::new(),
-            mode: Some(0),
-            shift_mode: None,
+            mode: Mode::Normal(0),
             click_state: ClickState {
                 left: false,
                 right: false,
@@ -67,6 +74,7 @@ impl Mapper {
                 right_actionlock: false,
             },
             mouse_configs_mutex,
+            serial_number,
         }
     }
 
@@ -80,12 +88,9 @@ impl Mapper {
         let modes = buffer[2] & 0b111;
 
         self.mode = match modes {
-            0 | 1 | 2 => Some(modes),
-            _ => None,
-        };
-        self.shift_mode = match modes {
-            4 | 5 | 6 => Some(modes - 0b100),
-            _ => None,
+            0 | 1 | 2 => Mode::Normal(modes),
+            4 | 5 | 6 => Mode::Shift(modes - 0b100),
+            _ => Mode::Normal(0),
         };
     }
 
@@ -166,5 +171,45 @@ impl Mapper {
             left_actionlock: (buffer[2] & 16) > 0,
             right_actionlock: (buffer[2] & 32) > 0,
         };
+
+        if button_state.back_button != self.button_state.back_button && button_state.back_button {
+            println!(
+                "back button : {}",
+                self.get_button_configs().back_button.get(self)
+            );
+        }
+
+        self.button_state = button_state;
+    }
+
+    fn get_button_configs(&self) -> ButtonConfigs {
+        self.mouse_configs_mutex.lock_safe().config[&self.serial_number].clone()
+    }
+
+    fn is_shift_mode(&self) -> bool {
+        match self.mode {
+            Mode::Normal(_) => false,
+            Mode::Shift(_) => true,
+        }
+    }
+
+    fn absolute_mode(&self) -> u8 {
+        match self.mode {
+            Mode::Normal(mode) => mode,
+            Mode::Shift(mode) => mode,
+        }
+    }
+}
+
+trait ButtonConfigExt {
+    fn get(&self, mapper: &Mapper) -> String;
+}
+
+impl ButtonConfigExt for ButtonConfig {
+    fn get(&self, mapper: &Mapper) -> String {
+        self[mapper.is_shift_mode() as usize]
+            .get(mapper.absolute_mode() as usize)
+            .unwrap_or(&String::new())
+            .clone()
     }
 }
