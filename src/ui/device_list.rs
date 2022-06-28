@@ -183,6 +183,8 @@ impl DocumentTrait for DeviceList {
                             let image_key = ImageKey::new(IdNamespace(0), self.image_id);
                             let mut txn = Transaction::new();
 
+                            self.image_id += 1;
+
                             txn.add_image(image_key, image_descriptor, image_data, None);
                             wrapper
                                 .api
