@@ -170,18 +170,16 @@ impl Text {
         glyph_options: Option<GlyphOptions>,
     ) {
         let mut glyph_instances = vec![];
-        let mut glyph_position = position;
+        let mut glyph_position = position + LayoutSize::new(0.0, self.font_size.to_f32_px());
         let mut line_count = 1.0;
 
         for (index, glyph_indice) in self.glyph_indices.iter().enumerate() {
             if let Some(glyph_dimension) = self.glyph_dimension_options[index] {
-                glyph_position += LayoutSize::new(0.0, self.font_size.to_f32_px());
                 glyph_instances.push(GlyphInstance {
                     index: *glyph_indice,
                     point: glyph_position,
                 });
-                glyph_position +=
-                    LayoutSize::new(glyph_dimension.advance, -(self.font_size.to_f32_px()));
+                glyph_position += LayoutSize::new(glyph_dimension.advance, 0.0);
             } else {
                 match self.char_vec[index] {
                     ' ' => {
@@ -194,7 +192,7 @@ impl Text {
                     '\n' | '\r' => {
                         glyph_position = position;
                         glyph_position +=
-                            LayoutSize::new(0.0, self.font_size.to_f32_px() * line_count);
+                            LayoutSize::new(0.0, self.font_size.to_f32_px() * (line_count + 1.0));
                         line_count += 1.0;
                     }
                     _ => {}
