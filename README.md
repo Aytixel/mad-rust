@@ -21,3 +21,7 @@ On Linux if you don't have libxdo installed, you will need to install it with : 
 
 On each system, it's recommended to run the driver in admin mode.
 Otherwise, it might cause some problems due to permissions.
+
+# Credit to
+
+The [enigo crate](https://github.com/enigo-rs/enigo) for the base of the tokenizer.
