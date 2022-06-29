@@ -3,7 +3,7 @@
     Modified version of the enigo crate tokenizer
 
 */
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Key {
     Shift,
     Control,
@@ -11,7 +11,7 @@ pub enum Key {
     Command,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Button {
     Left,
     Middle,
@@ -20,7 +20,7 @@ pub enum Button {
     ScrollDown,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Sequence(String),
     Unicode(String),

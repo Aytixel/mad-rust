@@ -4,6 +4,7 @@
 mod mapper;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use std::time::Duration;
@@ -109,20 +110,30 @@ fn main() {
         let mouses_config_mutex = Arc::new(Mutex::new(ConfigManager::<MousesConfig>::new(
             "mmo7_profiles",
         )));
+        let mouses_config_state_id = Arc::new(AtomicU32::new(0));
 
-        watch_config_update(mouses_config_mutex.clone());
+        watch_config_update(mouses_config_mutex.clone(), mouses_config_state_id.clone());
         run_connection(
             client_dualchannel,
             child,
             device_list_mutex.clone(),
             icon_data,
             mouses_config_mutex.clone(),
+            mouses_config_state_id.clone(),
         );
-        listening_new_device(host, device_list_mutex, mouses_config_mutex);
+        listening_new_device(
+            host,
+            device_list_mutex,
+            mouses_config_mutex,
+            mouses_config_state_id,
+        );
     }
 }
 
-fn watch_config_update(mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>) {
+fn watch_config_update(
+    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_state_id: Arc<AtomicU32>,
+) {
     let mouses_config_mutex = mouses_config_mutex.clone();
 
     spawn(move || {
@@ -131,10 +142,8 @@ fn watch_config_update(mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig
         let mut timer = Timer::new(TIMEOUT_1S * 10);
 
         loop {
-            {
-                let mut mouses_config = mouses_config_mutex.lock_safe();
-
-                mouses_config.update();
+            if mouses_config_mutex.lock_safe().update() {
+                mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
             }
 
             timer.wait();
@@ -147,6 +156,7 @@ fn listening_new_device(
     host: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_state_id: Arc<AtomicU32>,
 ) {
     let mut timer = Timer::new(TIMEOUT_1S);
 
@@ -192,6 +202,8 @@ fn listening_new_device(
                                             let host = host.clone();
                                             let device_list_mutex = device_list_mutex.clone();
                                             let mouses_config_mutex = mouses_config_mutex.clone();
+                                            let mouses_config_state_id =
+                                                mouses_config_state_id.clone();
 
                                             spawn(move || {
                                                 set_current_thread_priority(ThreadPriority::Max)
@@ -201,6 +213,7 @@ fn listening_new_device(
                                                     serial_number.clone(),
                                                     host.clone(),
                                                     mouses_config_mutex,
+                                                    mouses_config_state_id,
                                                 );
 
                                                 device_list_mutex
@@ -257,6 +270,7 @@ fn run_device(
     serial_number: String,
     dual_channel: DualChannel<Message>,
     mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_state_id: Arc<AtomicU32>,
 ) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
         let device = device_handle.device();
@@ -292,8 +306,11 @@ fn run_device(
                             dual_channel.send(Message::DeviceListUpdate);
 
                             let mut buffer = [0; 8];
-                            let mut mapper =
-                                Mapper::new(mouses_config_mutex, serial_number.clone());
+                            let mut mapper = Mapper::new(
+                                mouses_config_mutex,
+                                mouses_config_state_id,
+                                serial_number.clone(),
+                            );
 
                             loop {
                                 match device_handle.read_interrupt(
@@ -331,6 +348,7 @@ fn run_connection(
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     icon_data: Vec<u8>,
     mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_state_id: Arc<AtomicU32>,
 ) {
     spawn(move || {
         set_current_thread_priority(ThreadPriority::Min).ok();
@@ -395,6 +413,7 @@ fn run_connection(
                                     device_config.serial_number,
                                     ButtonConfigs::from_config(&device_config.config),
                                 );
+                                mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
                             }
                             _ => {}
                         }
