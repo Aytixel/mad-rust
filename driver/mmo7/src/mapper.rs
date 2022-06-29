@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use enigo::{Enigo, MouseButton, MouseControllable};
-use util::{config::ConfigManager, thread::MutexTrait};
+use util::{config::ConfigManager, thread::MutexTrait, tokenizer::tokenize};
 
 use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
 
@@ -174,8 +174,8 @@ impl Mapper {
 
         if button_state.back_button != self.button_state.back_button && button_state.back_button {
             println!(
-                "back button : {}",
-                self.get_button_configs().back_button.get(self)
+                "back button : {:?}",
+                tokenize(self.get_button_configs().back_button.get(self))
             );
         }
 
