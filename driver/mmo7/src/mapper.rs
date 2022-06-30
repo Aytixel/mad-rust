@@ -3,11 +3,11 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use enigo::{Enigo, MouseButton, MouseControllable};
+use enigo::{Enigo, KeyboardControllable, MouseButton, MouseControllable};
 use util::{
     config::ConfigManager,
     thread::MutexTrait,
-    tokenizer::{tokenize, StateToken, Token},
+    tokenizer::{tokenize, Button, Key, StateToken, Token},
 };
 
 use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
@@ -166,6 +166,8 @@ impl Mapper {
             right: (buffer[0] & 2) > 0,
             middle: (buffer[0] & 4) > 0,
         };
+        let middle_button_state_token =
+            self.get_state_token(&self.button_configs_token.scroll_button);
 
         if click_state.left != self.click_state.left {
             self.click_state.left = click_state.left;
@@ -176,13 +178,18 @@ impl Mapper {
                 self.enigo.mouse_up(MouseButton::Left);
             }
         }
-        if click_state.middle != self.click_state.middle {
-            self.click_state.middle = click_state.middle;
+        if middle_button_state_token.down.is_empty()
+            && middle_button_state_token.repeat.is_empty()
+            && middle_button_state_token.up.is_empty()
+        {
+            if click_state.middle != self.click_state.middle {
+                self.click_state.middle = click_state.middle;
 
-            if click_state.middle {
-                self.enigo.mouse_down(MouseButton::Middle);
-            } else {
-                self.enigo.mouse_up(MouseButton::Middle);
+                if click_state.middle {
+                    self.enigo.mouse_down(MouseButton::Middle);
+                } else {
+                    self.enigo.mouse_up(MouseButton::Middle);
+                }
             }
         }
         if click_state.right != self.click_state.right {
@@ -237,12 +244,81 @@ impl Mapper {
             right_actionlock: (buffer[2] & 32) > 0,
         };
 
-        if button_state.back_button != self.button_state.back_button && button_state.back_button {
-            println!(
-                "back button : {:?}",
-                self.button_configs_token.back_button.get(self)
-            );
-        }
+        self.emulate_button_config(
+            self.button_configs_token.back_button.clone(),
+            self.button_state.back_button,
+            button_state.back_button,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.forwards_button.clone(),
+            self.button_state.forwards_button,
+            button_state.forwards_button,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.button_1.clone(),
+            self.button_state.button_1,
+            button_state.button_1,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.button_2.clone(),
+            self.button_state.button_2,
+            button_state.button_2,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.button_3.clone(),
+            self.button_state.button_3,
+            button_state.button_3,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.hat_top.clone(),
+            self.button_state.hat_top,
+            button_state.hat_top,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.hat_bottom.clone(),
+            self.button_state.hat_bottom,
+            button_state.hat_bottom,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.hat_left.clone(),
+            self.button_state.hat_left,
+            button_state.hat_left,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.hat_right.clone(),
+            self.button_state.hat_right,
+            button_state.hat_right,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.precision_aim.clone(),
+            self.button_state.precision_aim,
+            button_state.precision_aim,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.thumb_clockwise.clone(),
+            self.button_state.thumb_clockwise,
+            button_state.thumb_clockwise,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.thumb_anticlockwise.clone(),
+            self.button_state.thumb_anticlockwise,
+            button_state.thumb_anticlockwise,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.scroll_button.clone(),
+            self.button_state.scroll_button,
+            button_state.scroll_button,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.left_actionlock.clone(),
+            self.button_state.left_actionlock,
+            button_state.left_actionlock,
+        );
+        self.emulate_button_config(
+            self.button_configs_token.right_actionlock.clone(),
+            self.button_state.right_actionlock,
+            button_state.right_actionlock,
+        );
 
         self.button_state = button_state;
     }
@@ -270,6 +346,31 @@ impl Mapper {
             true
         } else {
             false
+        }
+    }
+
+    fn get_state_token(&self, button_config_token: &ButtonConfigToken) -> StateToken {
+        button_config_token[self.is_shift_mode() as usize][self.absolute_mode() as usize].clone()
+    }
+
+    fn emulate_button_config(
+        &mut self,
+        button_config_token: ButtonConfigToken,
+        previous_button_state: bool,
+        current_button_state: bool,
+    ) {
+        let state_token = self.get_state_token(&button_config_token);
+
+        if current_button_state != previous_button_state {
+            if current_button_state {
+                emulate_token_vec(&mut self.enigo, state_token.down);
+            } else {
+                emulate_token_vec(&mut self.enigo, state_token.up);
+            }
+        }
+
+        if current_button_state {
+            emulate_token_vec(&mut self.enigo, state_token.repeat);
         }
     }
 }
@@ -305,12 +406,46 @@ impl ButtonConfigExt for ButtonConfig {
     }
 }
 
-trait ButtonConfigTokenExt {
-    fn get(&self, mapper: &Mapper) -> StateToken;
-}
+fn emulate_token_vec(enigo: &mut Enigo, token_vec: Vec<Token>) {
+    fn key_to_enigo(key: Key) -> enigo::Key {
+        match key {
+            Key::Shift => enigo::Key::Shift,
+            Key::Control => enigo::Key::Control,
+            Key::Alt => enigo::Key::Alt,
+            Key::Command => enigo::Key::Meta,
+        }
+    }
 
-impl ButtonConfigTokenExt for ButtonConfigToken {
-    fn get(&self, mapper: &Mapper) -> StateToken {
-        self[mapper.is_shift_mode() as usize][mapper.absolute_mode() as usize].clone()
+    for token in token_vec {
+        match token {
+            Token::Sequence(sequence) => {
+                for key in sequence.chars() {
+                    enigo.key_click(enigo::Key::Layout(key));
+                }
+            }
+            Token::Unicode(unicode_sequence) => enigo.key_sequence(unicode_sequence.as_str()),
+            Token::KeyUp(key) => enigo.key_up(key_to_enigo(key)),
+            Token::KeyDown(key) => enigo.key_down(key_to_enigo(key)),
+            Token::MouseUp(button) => match button {
+                Button::Left => enigo.mouse_up(enigo::MouseButton::Left),
+                Button::Middle => enigo.mouse_up(enigo::MouseButton::Middle),
+                Button::Right => enigo.mouse_up(enigo::MouseButton::Right),
+                _ => {}
+            },
+            Token::MouseDown(button) => match button {
+                Button::Left => enigo.mouse_down(enigo::MouseButton::Left),
+                Button::Middle => enigo.mouse_down(enigo::MouseButton::Middle),
+                Button::Right => enigo.mouse_down(enigo::MouseButton::Right),
+                _ => {}
+            },
+            Token::Click(button) => match button {
+                Button::ScrollUp => enigo.mouse_scroll_y(1),
+                Button::ScrollDown => enigo.mouse_scroll_y(-1),
+                Button::ScrollLeft => enigo.mouse_scroll_x(1),
+                Button::ScrollRight => enigo.mouse_scroll_x(-1),
+                _ => {}
+            },
+            _ => {}
+        }
     }
 }
