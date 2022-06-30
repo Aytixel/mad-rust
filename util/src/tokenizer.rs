@@ -33,9 +33,23 @@ pub enum Token {
     Repeat,
 }
 
-pub fn tokenize(input: String) -> Vec<Token> {
+#[derive(Debug, Clone, Default)]
+pub struct StateToken {
+    down: Vec<Token>,
+    repeat: Vec<Token>,
+    up: Vec<Token>,
+}
+
+pub fn tokenize(input: String) -> StateToken {
     let mut is_unicode = false;
-    let mut token_vec = Vec::new();
+    let mut has_repeat = false;
+    let mut has_wait_up = false;
+    let mut state_token = StateToken {
+        down: vec![],
+        repeat: vec![],
+        up: vec![],
+    };
+    let mut token_vec = vec![];
     let mut buffer = String::new();
     let mut chars = input.chars().peekable();
 
@@ -71,8 +85,22 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     }
 
                     match &*tag {
-                        "REPEAT" => token_vec.push(Token::Repeat),
-                        "WAIT_UP" => token_vec.push(Token::WaitUp),
+                        "REPEAT" => {
+                            has_repeat = true;
+                            state_token.down = token_vec.clone();
+                            token_vec.clear();
+                        }
+                        "WAIT_UP" => {
+                            has_wait_up = true;
+
+                            if has_repeat {
+                                state_token.repeat = token_vec.clone();
+                                token_vec.clear();
+                            } else {
+                                state_token.down = token_vec.clone();
+                                token_vec.clear();
+                            }
+                        }
                         "+UNICODE" => is_unicode = true,
                         "-UNICODE" => is_unicode = false,
                         "+SHIFT" => token_vec.push(Token::KeyDown(Key::Shift)),
@@ -105,7 +133,15 @@ pub fn tokenize(input: String) -> Vec<Token> {
         }
     }
 
-    token_vec
+    if has_wait_up {
+        state_token.up = token_vec;
+    } else if has_repeat {
+        state_token.repeat = token_vec;
+    } else {
+        state_token.down = token_vec;
+    }
+
+    state_token
 }
 
 fn flush(tokens: &mut Vec<Token>, buffer: &mut String, is_unicode: bool) {

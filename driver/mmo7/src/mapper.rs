@@ -7,12 +7,12 @@ use enigo::{Enigo, MouseButton, MouseControllable};
 use util::{
     config::ConfigManager,
     thread::MutexTrait,
-    tokenizer::{tokenize, Token},
+    tokenizer::{tokenize, StateToken, Token},
 };
 
 use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
 
-type ButtonConfigToken = [[Vec<Token>; 3]; 2];
+type ButtonConfigToken = [[StateToken; 3]; 2];
 
 pub struct ButtonConfigsToken {
     scroll_button: ButtonConfigToken,
@@ -280,7 +280,18 @@ trait ButtonConfigExt {
 
 impl ButtonConfigExt for ButtonConfig {
     fn tokenize(&self) -> ButtonConfigToken {
-        let mut button_config_token = [[vec![], vec![], vec![]], [vec![], vec![], vec![]]];
+        let mut button_config_token = [
+            [
+                StateToken::default(),
+                StateToken::default(),
+                StateToken::default(),
+            ],
+            [
+                StateToken::default(),
+                StateToken::default(),
+                StateToken::default(),
+            ],
+        ];
 
         for mode_type_index in 0..2 {
             for mode_index in 0..3 {
@@ -295,11 +306,11 @@ impl ButtonConfigExt for ButtonConfig {
 }
 
 trait ButtonConfigTokenExt {
-    fn get(&self, mapper: &Mapper) -> Vec<Token>;
+    fn get(&self, mapper: &Mapper) -> StateToken;
 }
 
 impl ButtonConfigTokenExt for ButtonConfigToken {
-    fn get(&self, mapper: &Mapper) -> Vec<Token> {
+    fn get(&self, mapper: &Mapper) -> StateToken {
         self[mapper.is_shift_mode() as usize][mapper.absolute_mode() as usize].clone()
     }
 }

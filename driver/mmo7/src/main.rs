@@ -318,11 +318,7 @@ fn run_device(
                                     &mut buffer,
                                     Duration::from_millis(100),
                                 ) {
-                                    Ok(_) => {
-                                        //println!("{} : {:?}", serial_number, buffer);
-                                        mapper.emulate(&buffer);
-                                    }
-                                    Err(rusb::Error::Timeout) => {}
+                                    Ok(_) | Err(rusb::Error::Timeout) => mapper.emulate(&buffer),
                                     Err(err) => {
                                         println!("{} disconnected : {}", serial_number, err);
                                         break;
