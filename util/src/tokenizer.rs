@@ -30,6 +30,7 @@ pub enum Token {
     MouseDown(Button),
     Click(Button),
     WaitUp,
+    Repeat,
 }
 
 pub fn tokenize(input: String) -> Vec<Token> {
@@ -70,6 +71,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     }
 
                     match &*tag {
+                        "REPEAT" => token_vec.push(Token::Repeat),
                         "WAIT_UP" => token_vec.push(Token::WaitUp),
                         "+UNICODE" => is_unicode = true,
                         "-UNICODE" => is_unicode = false,
