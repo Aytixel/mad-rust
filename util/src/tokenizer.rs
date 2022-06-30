@@ -35,9 +35,9 @@ pub enum Token {
 
 #[derive(Debug, Clone, Default)]
 pub struct StateToken {
-    down: Vec<Token>,
-    repeat: Vec<Token>,
-    up: Vec<Token>,
+    pub down: Vec<Token>,
+    pub repeat: Vec<Token>,
+    pub up: Vec<Token>,
 }
 
 pub fn tokenize(input: String) -> StateToken {
