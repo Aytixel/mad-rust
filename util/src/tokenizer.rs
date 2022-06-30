@@ -35,7 +35,6 @@ pub enum Token {
 
 #[derive(Debug, Clone, Default)]
 pub struct StateToken {
-    pub follow_rate: bool,
     pub down: Vec<Token>,
     pub repeat: Vec<Token>,
     pub up: Vec<Token>,
@@ -45,9 +44,7 @@ pub fn tokenize(input: String) -> StateToken {
     let mut is_unicode = false;
     let mut has_repeat = false;
     let mut has_wait_up = false;
-    let mut follow_rate = false;
     let mut state_token = StateToken {
-        follow_rate: false,
         down: vec![],
         repeat: vec![],
         up: vec![],
@@ -92,9 +89,6 @@ pub fn tokenize(input: String) -> StateToken {
                             has_repeat = true;
                             state_token.down = token_vec;
                             token_vec = vec![];
-                        }
-                        "FOLLOW_RATE" => {
-                            follow_rate = true;
                         }
                         "WAIT_UP" => {
                             has_wait_up = true;
@@ -150,8 +144,6 @@ pub fn tokenize(input: String) -> StateToken {
     } else {
         state_token.down = token_vec;
     }
-
-    state_token.follow_rate = follow_rate;
 
     state_token
 }

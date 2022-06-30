@@ -432,18 +432,16 @@ impl Mapper {
     ) {
         let state_token = self.get_state_token(&button_config_token);
 
-        if button_timer.borrow_mut().check() || state_token.follow_rate {
-            if current_button_state != previous_button_state {
-                if current_button_state {
-                    self.emulation_worker_rx.send(state_token.down).ok();
-                } else {
-                    self.emulation_worker_rx.send(state_token.up).ok();
-                }
-            }
-
+        if current_button_state != previous_button_state {
             if current_button_state {
-                self.emulation_worker_rx.send(state_token.repeat).ok();
+                self.emulation_worker_rx.send(state_token.down).ok();
+            } else {
+                self.emulation_worker_rx.send(state_token.up).ok();
             }
+        }
+
+        if button_timer.borrow_mut().check() && current_button_state {
+            self.emulation_worker_rx.send(state_token.repeat).ok();
         }
     }
 }
