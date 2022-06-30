@@ -18,6 +18,8 @@ pub enum Button {
     Right,
     ScrollUp,
     ScrollDown,
+    ScrollLeft,
+    ScrollRight,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +121,8 @@ pub fn tokenize(input: String) -> StateToken {
                         "-RIGHT" => token_vec.push(Token::MouseDown(Button::Right)),
                         "SCROLL_UP" => token_vec.push(Token::Click(Button::ScrollUp)),
                         "SCROLL_DOWN" => token_vec.push(Token::Click(Button::ScrollDown)),
+                        "SCROLL_LEFT" => token_vec.push(Token::Click(Button::ScrollLeft)),
+                        "SCROLL_RIGHT" => token_vec.push(Token::Click(Button::ScrollRight)),
                         _ => {}
                     }
                 }
