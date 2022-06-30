@@ -17,6 +17,16 @@ impl Timer {
         }
     }
 
+    pub fn check(&mut self) -> bool {
+        if self.last_update.elapsed() >= self.frame_duration {
+            self.last_update = Instant::now();
+
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn wait(&mut self) {
         let elapsed = self.last_update.elapsed();
 
@@ -24,6 +34,6 @@ impl Timer {
             sleep(self.frame_duration - elapsed);
         }
 
-        self.last_update = Instant::now()
+        self.last_update = Instant::now();
     }
 }

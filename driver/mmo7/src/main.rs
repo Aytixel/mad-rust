@@ -316,7 +316,7 @@ fn run_device(
                                 match device_handle.read_interrupt(
                                     endpoint.address,
                                     &mut buffer,
-                                    Duration::from_millis(100),
+                                    Duration::from_millis(40),
                                 ) {
                                     Ok(_) => mapper.emulate(&buffer),
                                     Err(rusb::Error::Timeout) => {
@@ -324,7 +324,7 @@ fn run_device(
                                         buffer[3] = 0;
                                         buffer[5] = 0;
 
-                                        mapper.emulate(&buffer)
+                                        mapper.emulate(&buffer);
                                     }
                                     Err(err) => {
                                         println!("{} disconnected : {}", serial_number, err);

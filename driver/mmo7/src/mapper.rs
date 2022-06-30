@@ -1,12 +1,19 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+use std::{
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
+    thread::spawn,
+    time::Duration,
 };
 
 use enigo::{Enigo, KeyboardControllable, MouseButton, MouseControllable};
+use thread_priority::{set_current_thread_priority, ThreadPriority};
 use util::{
     config::ConfigManager,
     thread::MutexTrait,
+    time::Timer,
     tokenizer::{tokenize, Button, Key, StateToken, Token},
 };
 
@@ -94,6 +101,8 @@ pub struct Mapper {
     mouses_config_state_id: Arc<AtomicU32>,
     last_mouses_config_state_id: u32,
     serial_number: String,
+    emulation_worker_rx: Sender<Vec<Token>>,
+    repeat_timer: Timer,
 }
 
 impl Mapper {
@@ -104,6 +113,17 @@ impl Mapper {
     ) -> Self {
         let last_mouses_config_state_id = mouses_config_state_id.load(Ordering::SeqCst);
         let button_configs = mouses_config_mutex.lock_safe().config[&serial_number].clone();
+        let (emulation_worker_rx, emulation_worker_tx) = channel();
+
+        spawn(move || {
+            set_current_thread_priority(ThreadPriority::Max).ok();
+
+            let mut enigo = Enigo::new();
+
+            while let Ok(token_vec) = emulation_worker_tx.recv() {
+                emulate_token_vec(&mut enigo, token_vec);
+            }
+        });
 
         Self {
             enigo: Enigo::new(),
@@ -135,6 +155,8 @@ impl Mapper {
             mouses_config_state_id,
             last_mouses_config_state_id,
             serial_number,
+            emulation_worker_rx,
+            repeat_timer: Timer::new(Duration::from_millis(50)),
         }
     }
 
@@ -227,101 +249,103 @@ impl Mapper {
     }
 
     fn mapped_emulation(&mut self, buffer: &[u8]) {
-        let button_state = ButtonState {
-            back_button: (buffer[0] & 8) > 0,
-            forwards_button: (buffer[0] & 16) > 0,
-            button_1: (buffer[0] & 32) > 0,
-            button_2: (buffer[0] & 64) > 0,
-            button_3: (buffer[0] & 128) > 0,
-            hat_top: (buffer[1] & 1) > 0,
-            hat_bottom: (buffer[1] & 2) > 0,
-            hat_left: (buffer[1] & 4) > 0,
-            hat_right: (buffer[1] & 8) > 0,
-            precision_aim: (buffer[1] & 16) > 0,
-            thumb_clockwise: (buffer[1] & 32) > 0,
-            thumb_anticlockwise: (buffer[1] & 64) > 0,
-            scroll_button: (buffer[2] & 8) > 0,
-            left_actionlock: (buffer[2] & 16) > 0,
-            right_actionlock: (buffer[2] & 32) > 0,
-        };
+        if self.repeat_timer.check() {
+            let button_state = ButtonState {
+                back_button: (buffer[0] & 8) > 0,
+                forwards_button: (buffer[0] & 16) > 0,
+                button_1: (buffer[0] & 32) > 0,
+                button_2: (buffer[0] & 64) > 0,
+                button_3: (buffer[0] & 128) > 0,
+                hat_top: (buffer[1] & 1) > 0,
+                hat_bottom: (buffer[1] & 2) > 0,
+                hat_left: (buffer[1] & 4) > 0,
+                hat_right: (buffer[1] & 8) > 0,
+                precision_aim: (buffer[1] & 16) > 0,
+                thumb_clockwise: (buffer[1] & 32) > 0,
+                thumb_anticlockwise: (buffer[1] & 64) > 0,
+                scroll_button: (buffer[2] & 8) > 0,
+                left_actionlock: (buffer[2] & 16) > 0,
+                right_actionlock: (buffer[2] & 32) > 0,
+            };
 
-        self.emulate_button_config(
-            self.button_configs_token.back_button.clone(),
-            self.button_state.back_button,
-            button_state.back_button,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.forwards_button.clone(),
-            self.button_state.forwards_button,
-            button_state.forwards_button,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.button_1.clone(),
-            self.button_state.button_1,
-            button_state.button_1,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.button_2.clone(),
-            self.button_state.button_2,
-            button_state.button_2,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.button_3.clone(),
-            self.button_state.button_3,
-            button_state.button_3,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.hat_top.clone(),
-            self.button_state.hat_top,
-            button_state.hat_top,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.hat_bottom.clone(),
-            self.button_state.hat_bottom,
-            button_state.hat_bottom,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.hat_left.clone(),
-            self.button_state.hat_left,
-            button_state.hat_left,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.hat_right.clone(),
-            self.button_state.hat_right,
-            button_state.hat_right,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.precision_aim.clone(),
-            self.button_state.precision_aim,
-            button_state.precision_aim,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.thumb_clockwise.clone(),
-            self.button_state.thumb_clockwise,
-            button_state.thumb_clockwise,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.thumb_anticlockwise.clone(),
-            self.button_state.thumb_anticlockwise,
-            button_state.thumb_anticlockwise,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.scroll_button.clone(),
-            self.button_state.scroll_button,
-            button_state.scroll_button,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.left_actionlock.clone(),
-            self.button_state.left_actionlock,
-            button_state.left_actionlock,
-        );
-        self.emulate_button_config(
-            self.button_configs_token.right_actionlock.clone(),
-            self.button_state.right_actionlock,
-            button_state.right_actionlock,
-        );
+            self.emulate_button_config(
+                self.button_configs_token.back_button.clone(),
+                self.button_state.back_button,
+                button_state.back_button,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.forwards_button.clone(),
+                self.button_state.forwards_button,
+                button_state.forwards_button,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.button_1.clone(),
+                self.button_state.button_1,
+                button_state.button_1,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.button_2.clone(),
+                self.button_state.button_2,
+                button_state.button_2,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.button_3.clone(),
+                self.button_state.button_3,
+                button_state.button_3,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.hat_top.clone(),
+                self.button_state.hat_top,
+                button_state.hat_top,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.hat_bottom.clone(),
+                self.button_state.hat_bottom,
+                button_state.hat_bottom,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.hat_left.clone(),
+                self.button_state.hat_left,
+                button_state.hat_left,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.hat_right.clone(),
+                self.button_state.hat_right,
+                button_state.hat_right,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.precision_aim.clone(),
+                self.button_state.precision_aim,
+                button_state.precision_aim,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.thumb_clockwise.clone(),
+                self.button_state.thumb_clockwise,
+                button_state.thumb_clockwise,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.thumb_anticlockwise.clone(),
+                self.button_state.thumb_anticlockwise,
+                button_state.thumb_anticlockwise,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.scroll_button.clone(),
+                self.button_state.scroll_button,
+                button_state.scroll_button,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.left_actionlock.clone(),
+                self.button_state.left_actionlock,
+                button_state.left_actionlock,
+            );
+            self.emulate_button_config(
+                self.button_configs_token.right_actionlock.clone(),
+                self.button_state.right_actionlock,
+                button_state.right_actionlock,
+            );
 
-        self.button_state = button_state;
+            self.button_state = button_state;
+        }
     }
 
     fn is_shift_mode(&self) -> bool {
@@ -364,14 +388,14 @@ impl Mapper {
 
         if current_button_state != previous_button_state {
             if current_button_state {
-                emulate_token_vec(&mut self.enigo, state_token.down);
+                self.emulation_worker_rx.send(state_token.down).ok();
             } else {
-                emulate_token_vec(&mut self.enigo, state_token.up);
+                self.emulation_worker_rx.send(state_token.up).ok();
             }
         }
 
         if current_button_state {
-            emulate_token_vec(&mut self.enigo, state_token.repeat);
+            self.emulation_worker_rx.send(state_token.repeat).ok();
         }
     }
 }
