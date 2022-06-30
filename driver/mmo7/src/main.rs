@@ -318,7 +318,14 @@ fn run_device(
                                     &mut buffer,
                                     Duration::from_millis(100),
                                 ) {
-                                    Ok(_) | Err(rusb::Error::Timeout) => mapper.emulate(&buffer),
+                                    Ok(_) => mapper.emulate(&buffer),
+                                    Err(rusb::Error::Timeout) => {
+                                        // reset movement to enable repeated action without the mouse drifting
+                                        buffer[3] = 0;
+                                        buffer[5] = 0;
+
+                                        mapper.emulate(&buffer)
+                                    }
                                     Err(err) => {
                                         println!("{} disconnected : {}", serial_number, err);
                                         break;
