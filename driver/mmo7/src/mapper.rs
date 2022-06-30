@@ -14,6 +14,7 @@ use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
 
 type ButtonConfigToken = [[StateToken; 3]; 2];
 
+#[derive(Debug)]
 pub struct ButtonConfigsToken {
     scroll_button: ButtonConfigToken,
     left_actionlock: ButtonConfigToken,

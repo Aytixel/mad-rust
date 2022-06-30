@@ -89,8 +89,8 @@ pub fn tokenize(input: String) -> StateToken {
                     match &*tag {
                         "REPEAT" => {
                             has_repeat = true;
-                            state_token.down = token_vec.clone();
-                            token_vec.clear();
+                            state_token.down = token_vec;
+                            token_vec = vec![];
                         }
                         "WAIT_UP" => {
                             has_wait_up = true;
@@ -113,12 +113,12 @@ pub fn tokenize(input: String) -> StateToken {
                         "-META" => token_vec.push(Token::KeyUp(Key::Command)),
                         "+ALT" => token_vec.push(Token::KeyDown(Key::Alt)),
                         "-ALT" => token_vec.push(Token::KeyUp(Key::Alt)),
-                        "+LEFT" => token_vec.push(Token::MouseUp(Button::Left)),
-                        "-LEFT" => token_vec.push(Token::MouseDown(Button::Left)),
-                        "+MIDDLE" => token_vec.push(Token::MouseUp(Button::Middle)),
-                        "-MIDDLE" => token_vec.push(Token::MouseDown(Button::Middle)),
-                        "+RIGHT" => token_vec.push(Token::MouseUp(Button::Right)),
-                        "-RIGHT" => token_vec.push(Token::MouseDown(Button::Right)),
+                        "+LEFT" => token_vec.push(Token::MouseDown(Button::Left)),
+                        "-LEFT" => token_vec.push(Token::MouseUp(Button::Left)),
+                        "+MIDDLE" => token_vec.push(Token::MouseDown(Button::Middle)),
+                        "-MIDDLE" => token_vec.push(Token::MouseUp(Button::Middle)),
+                        "+RIGHT" => token_vec.push(Token::MouseDown(Button::Right)),
+                        "-RIGHT" => token_vec.push(Token::MouseUp(Button::Right)),
                         "SCROLL_UP" => token_vec.push(Token::Click(Button::ScrollUp)),
                         "SCROLL_DOWN" => token_vec.push(Token::Click(Button::ScrollDown)),
                         "SCROLL_LEFT" => token_vec.push(Token::Click(Button::ScrollLeft)),
@@ -136,6 +136,8 @@ pub fn tokenize(input: String) -> StateToken {
             _ => buffer.push(c),
         }
     }
+
+    flush(&mut token_vec, &mut buffer, is_unicode);
 
     if has_wait_up {
         state_token.up = token_vec;

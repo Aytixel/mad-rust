@@ -24,7 +24,7 @@ const PID: u16 = 0x1713;
 
 type ButtonConfig = [Vec<String>; 2];
 
-#[derive(Deserialize, Serialize, Clone, Default)]
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 pub struct ButtonConfigs {
     scroll_button: ButtonConfig,
     left_actionlock: ButtonConfig,
