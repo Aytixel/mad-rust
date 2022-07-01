@@ -299,91 +299,91 @@ impl Mapper {
             right_actionlock: (buffer[2] & 32) > 0,
         };
 
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.back_button.clone(),
             self.button_timer.back_button.clone(),
             self.button_state.back_button,
             button_state.back_button,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.forwards_button.clone(),
             self.button_timer.forwards_button.clone(),
             self.button_state.forwards_button,
             button_state.forwards_button,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.button_1.clone(),
             self.button_timer.button_1.clone(),
             self.button_state.button_1,
             button_state.button_1,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.button_2.clone(),
             self.button_timer.button_2.clone(),
             self.button_state.button_2,
             button_state.button_2,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.button_3.clone(),
             self.button_timer.button_3.clone(),
             self.button_state.button_3,
             button_state.button_3,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.hat_top.clone(),
             self.button_timer.hat_top.clone(),
             self.button_state.hat_top,
             button_state.hat_top,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.hat_bottom.clone(),
             self.button_timer.hat_bottom.clone(),
             self.button_state.hat_bottom,
             button_state.hat_bottom,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.hat_left.clone(),
             self.button_timer.hat_left.clone(),
             self.button_state.hat_left,
             button_state.hat_left,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.hat_right.clone(),
             self.button_timer.hat_right.clone(),
             self.button_state.hat_right,
             button_state.hat_right,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.precision_aim.clone(),
             self.button_timer.precision_aim.clone(),
             self.button_state.precision_aim,
             button_state.precision_aim,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.thumb_clockwise.clone(),
             self.button_timer.thumb_clockwise.clone(),
             self.button_state.thumb_clockwise,
             button_state.thumb_clockwise,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.thumb_anticlockwise.clone(),
             self.button_timer.thumb_anticlockwise.clone(),
             self.button_state.thumb_anticlockwise,
             button_state.thumb_anticlockwise,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.scroll_button.clone(),
             self.button_timer.scroll_button.clone(),
             self.button_state.scroll_button,
             button_state.scroll_button,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.left_actionlock.clone(),
             self.button_timer.left_actionlock.clone(),
             self.button_state.left_actionlock,
             button_state.left_actionlock,
         );
-        self.emulate_button_config(
+        self.emulate_button_config_token(
             self.button_configs_token.right_actionlock.clone(),
             self.button_timer.right_actionlock.clone(),
             self.button_state.right_actionlock,
@@ -423,7 +423,7 @@ impl Mapper {
         button_config_token[self.is_shift_mode() as usize][self.absolute_mode() as usize].clone()
     }
 
-    fn emulate_button_config(
+    fn emulate_button_config_token(
         &mut self,
         button_config_token: ButtonConfigToken,
         button_timer: Rc<RefCell<Timer>>,
