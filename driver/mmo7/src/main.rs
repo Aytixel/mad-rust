@@ -316,15 +316,11 @@ fn run_device(
                                 match device_handle.read_interrupt(
                                     endpoint.address,
                                     &mut buffer,
-                                    Duration::from_millis(40),
+                                    Duration::from_millis(25),
                                 ) {
                                     Ok(_) => mapper.emulate(&buffer),
                                     Err(rusb::Error::Timeout) => {
-                                        // reset movement to enable repeated action without the mouse drifting
-                                        buffer[3] = 0;
-                                        buffer[5] = 0;
-
-                                        mapper.emulate(&buffer);
+                                        mapper.emulate_only_mapped(&buffer)
                                     }
                                     Err(err) => {
                                         println!("{} disconnected : {}", serial_number, err);

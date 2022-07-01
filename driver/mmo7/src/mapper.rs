@@ -230,6 +230,16 @@ impl Mapper {
         self.mapped_emulation(buffer);
     }
 
+    pub fn emulate_only_mapped(&mut self, buffer: &[u8]) {
+        if self.config_has_change() {
+            self.button_configs_token = ButtonConfigsToken::from_config(
+                self.mouses_config_mutex.lock_safe().config[&self.serial_number].clone(),
+            );
+        }
+
+        self.mapped_emulation(buffer);
+    }
+
     fn update_mode(&mut self, buffer: &[u8]) {
         let modes = buffer[2] & 0b111;
 
