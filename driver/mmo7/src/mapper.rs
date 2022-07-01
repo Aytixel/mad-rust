@@ -546,11 +546,13 @@ fn emulate_token_vec(enigo: &mut Enigo, token_vec: Vec<Token>) {
                 _ => {}
             },
             Token::Click(button) => match button {
+                Button::Left => enigo.mouse_click(enigo::MouseButton::Left),
+                Button::Middle => enigo.mouse_click(enigo::MouseButton::Middle),
+                Button::Right => enigo.mouse_click(enigo::MouseButton::Right),
                 Button::ScrollUp => enigo.mouse_scroll_y(1),
                 Button::ScrollDown => enigo.mouse_scroll_y(-1),
                 Button::ScrollLeft => enigo.mouse_scroll_x(1),
                 Button::ScrollRight => enigo.mouse_scroll_x(-1),
-                _ => {}
             },
         }
     }
