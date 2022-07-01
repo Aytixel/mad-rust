@@ -2,7 +2,7 @@ use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, Syst
 
 use std::collections::VecDeque;
 use std::env::current_exe;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
 #[derive(Debug)]
 pub struct DualChannel<T: Clone> {
@@ -82,6 +82,8 @@ pub fn kill_double() -> bool {
 
 pub trait MutexTrait<'a, T> {
     fn lock_safe(&self) -> MutexGuard<'_, T>;
+
+    fn try_lock_safe(&self) -> Option<MutexGuard<'_, T>>;
 }
 
 impl<'a, T> MutexTrait<'_, T> for Mutex<T> {
@@ -89,6 +91,16 @@ impl<'a, T> MutexTrait<'_, T> for Mutex<T> {
         match self.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn try_lock_safe(&self) -> Option<MutexGuard<'_, T>> {
+        match self.try_lock() {
+            Ok(guard) => Some(guard),
+            Err(error) => match error {
+                TryLockError::Poisoned(poisoned) => Some(poisoned.into_inner()),
+                TryLockError::WouldBlock => None,
+            },
         }
     }
 }
