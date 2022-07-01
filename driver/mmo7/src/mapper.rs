@@ -2,20 +2,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::spawn;
 use std::time::Duration;
 
+use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
+
 use enigo::{Enigo, KeyboardControllable, MouseButton, MouseControllable};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
-use util::{
-    config::ConfigManager,
-    thread::MutexTrait,
-    time::Timer,
-    tokenizer::{tokenize, Button, Key, StateToken, Token},
-};
-
-use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
+use util::config::ConfigManager;
+use util::thread::MutexTrait;
+use util::time::Timer;
+use util::tokenizer::{tokenize, Button, Key, StateToken, Token};
 
 type ButtonConfigToken = [[StateToken; 3]; 2];
 
@@ -119,6 +117,8 @@ pub struct Mapper {
     last_mouses_config_state_id: u32,
     serial_number: String,
     emulation_worker_rx: Sender<Vec<Token>>,
+    mouse_relative_movement: Option<(i32, i32)>,
+    mouse_relative_movement_mutex: Arc<Mutex<Option<(i32, i32)>>>,
 }
 
 impl Mapper {
@@ -130,7 +130,31 @@ impl Mapper {
         let last_mouses_config_state_id = mouses_config_state_id.load(Ordering::SeqCst);
         let button_configs = mouses_config_mutex.lock_safe().config[&serial_number].clone();
         let (emulation_worker_rx, emulation_worker_tx) = channel();
+        let mouse_relative_movement_mutex = Arc::new(Mutex::new(None));
+        let mouse_relative_movement_mutex_clone = mouse_relative_movement_mutex.clone();
 
+        // mouse movement worker
+        spawn(move || {
+            set_current_thread_priority(ThreadPriority::Max).ok();
+
+            let mut enigo = Enigo::new();
+            let mut timer = Timer::new(Duration::from_millis(1));
+
+            loop {
+                {
+                    let mut mouse_relative_movement: MutexGuard<Option<(i32, i32)>> =
+                        mouse_relative_movement_mutex_clone.lock_safe();
+
+                    if let Some(relative_movement) = mouse_relative_movement.take() {
+                        enigo.mouse_move_relative(relative_movement.0, relative_movement.1);
+                    }
+                }
+
+                timer.wait();
+            }
+        });
+
+        // emulation worker
         spawn(move || {
             set_current_thread_priority(ThreadPriority::Max).ok();
 
@@ -189,6 +213,8 @@ impl Mapper {
             last_mouses_config_state_id,
             serial_number,
             emulation_worker_rx,
+            mouse_relative_movement: None,
+            mouse_relative_movement_mutex,
         }
     }
 
@@ -258,18 +284,28 @@ impl Mapper {
         }
 
         // movement emulation
-        self.enigo.mouse_move_relative(
-            if buffer[3] < 128 {
-                buffer[3] as i32
-            } else {
-                buffer[3] as i32 - 256
-            },
-            if buffer[5] < 128 {
-                buffer[5] as i32
-            } else {
-                buffer[5] as i32 - 256
-            },
-        );
+        let relative_movement = self.mouse_relative_movement.get_or_insert((0, 0));
+
+        relative_movement.0 += if buffer[3] < 128 {
+            buffer[3] as i32
+        } else {
+            buffer[3] as i32 - 256
+        };
+        relative_movement.1 += if buffer[5] < 128 {
+            buffer[5] as i32
+        } else {
+            buffer[5] as i32 - 256
+        };
+
+        {
+            if let Some(mut mouse_relative_movement) =
+                self.mouse_relative_movement_mutex.try_lock_safe()
+            {
+                if let None = *mouse_relative_movement {
+                    *mouse_relative_movement = self.mouse_relative_movement.take();
+                }
+            }
+        }
 
         // wheel emulation
         if buffer[7] == 1 {
