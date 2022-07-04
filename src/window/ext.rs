@@ -1,4 +1,4 @@
-use webrender::api::units::{LayoutSize};
+use webrender::api::units::LayoutSize;
 use webrender::api::{
     BorderRadius, ClipId, ClipMode, ColorF, CommonItemProperties, ComplexClipRegion,
     DisplayListBuilder, PropertyBinding, SpaceAndClipInfo,
