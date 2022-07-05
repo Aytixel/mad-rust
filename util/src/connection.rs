@@ -35,7 +35,7 @@ pub mod server {
                                     Arc::new(Mutex::new(Instant::now()));
                                 let running = Arc::new(AtomicBool::new(true));
 
-                                child.send((socket_addr, true, vec![])).ok();
+                                child.send_async((socket_addr, true, vec![])).await.ok();
 
                                 {
                                     let child = child.clone();
@@ -52,8 +52,11 @@ pub mod server {
                                             if last_packet_receive_mutex.lock().await.elapsed()
                                                 > Duration::from_secs(5)
                                             {
-                                                child.send((socket_addr, false, vec![])).ok();
                                                 running.store(false, Ordering::SeqCst);
+                                                child
+                                                    .send_async((socket_addr, false, vec![]))
+                                                    .await
+                                                    .ok();
                                                 break;
                                             }
 
@@ -87,8 +90,11 @@ pub mod server {
 
                                                 // connection end
                                                 if size == 0 {
-                                                    child.send((socket_addr, false, vec![])).ok();
                                                     running.store(false, Ordering::SeqCst);
+                                                    child
+                                                        .send_async((socket_addr, false, vec![]))
+                                                        .await
+                                                        .ok();
                                                     break;
                                                 }
 
@@ -104,7 +110,8 @@ pub mod server {
                                                         socket.read_exact(&mut buffer).await
                                                     {
                                                         child
-                                                            .send((socket_addr, true, buffer))
+                                                            .send_async((socket_addr, true, buffer))
+                                                            .await
                                                             .ok();
                                                     }
                                                 }
@@ -123,8 +130,8 @@ pub mod server {
 
                                             // connection end
                                             if !is_running {
-                                                socket.write_all(&0u64.to_be_bytes()).await.ok();
                                                 running.store(false, Ordering::SeqCst);
+                                                socket.write_all(&0u64.to_be_bytes()).await.ok();
                                                 break;
                                             }
 
