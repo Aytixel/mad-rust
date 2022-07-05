@@ -3,8 +3,8 @@ use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, Syst
 use std::collections::VecDeque;
 use std::env::current_exe;
 use std::sync::{
-    Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError,
-    WaitTimeoutResult,
+    Arc, Condvar, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    TryLockError, WaitTimeoutResult,
 };
 use std::time::Duration;
 
@@ -218,5 +218,109 @@ impl CondvarTrait for Condvar {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
+    }
+}
+
+pub enum CondMutexResult<'a, T> {
+    Ok(MutexGuard<'a, T>),
+    TimeoutOk((MutexGuard<'a, T>, WaitTimeoutResult)),
+    Err(PoisonError<MutexGuard<'a, T>>),
+    TimeoutErr(PoisonError<(MutexGuard<'a, T>, WaitTimeoutResult)>),
+}
+pub struct CondMutex<T>(Mutex<T>, Condvar);
+
+impl<T> CondMutex<T> {
+    pub fn new(value: T) -> Self {
+        Self(Mutex::new(value), Condvar::new())
+    }
+
+    pub fn lock(&self) -> Result<MutexGuard<'_, T>, PoisonError<MutexGuard<'_, T>>> {
+        self.0.lock()
+    }
+
+    pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, TryLockError<MutexGuard<'_, T>>> {
+        self.0.try_lock()
+    }
+
+    pub fn lock_poisoned(&self) -> MutexGuard<'_, T> {
+        self.0.lock_poisoned()
+    }
+
+    pub fn try_lock_poisoned(&self) -> Option<MutexGuard<'_, T>> {
+        self.0.try_lock_poisoned()
+    }
+
+    pub fn wait(&self) -> CondMutexResult<T> {
+        match self.0.lock() {
+            Ok(guard) => match self.1.wait(guard) {
+                Ok(guard) => CondMutexResult::Ok(guard),
+                Err(poisoned) => CondMutexResult::Err(poisoned),
+            },
+            Err(poisoned) => CondMutexResult::Err(poisoned),
+        }
+    }
+
+    pub fn wait_timeout(&self, dur: Duration) -> CondMutexResult<T> {
+        match self.0.lock() {
+            Ok(guard) => match self.1.wait_timeout(guard, dur) {
+                Ok(guard) => CondMutexResult::TimeoutOk(guard),
+                Err(poisoned) => CondMutexResult::TimeoutErr(poisoned),
+            },
+            Err(poisoned) => CondMutexResult::Err(poisoned),
+        }
+    }
+
+    pub fn wait_timeout_while<F: FnMut(&mut T) -> bool>(
+        &self,
+        dur: Duration,
+        condition: F,
+    ) -> CondMutexResult<T> {
+        match self.0.lock() {
+            Ok(guard) => match self.1.wait_timeout_while(guard, dur, condition) {
+                Ok(guard) => CondMutexResult::TimeoutOk(guard),
+                Err(poisoned) => CondMutexResult::TimeoutErr(poisoned),
+            },
+            Err(poisoned) => CondMutexResult::Err(poisoned),
+        }
+    }
+
+    pub fn wait_while<F: FnMut(&mut T) -> bool>(&self, condition: F) -> CondMutexResult<T> {
+        match self.0.lock() {
+            Ok(guard) => match self.1.wait_while(guard, condition) {
+                Ok(guard) => CondMutexResult::Ok(guard),
+                Err(poisoned) => CondMutexResult::Err(poisoned),
+            },
+            Err(poisoned) => CondMutexResult::Err(poisoned),
+        }
+    }
+
+    pub fn wait_poisoned(&self) -> MutexGuard<'_, T> {
+        self.1.wait_poisoned(self.0.lock_poisoned())
+    }
+
+    pub fn wait_timeout_poisoned(&self, dur: Duration) -> (MutexGuard<'_, T>, WaitTimeoutResult) {
+        self.1.wait_timeout_poisoned(self.0.lock_poisoned(), dur)
+    }
+
+    pub fn wait_timeout_while_poisoned<F: FnMut(&mut T) -> bool>(
+        &self,
+        dur: Duration,
+        condition: F,
+    ) -> (MutexGuard<'_, T>, WaitTimeoutResult) {
+        self.1
+            .wait_timeout_while_poisoned(self.0.lock_poisoned(), dur, condition)
+    }
+
+    pub fn wait_while_poisoned<F: FnMut(&mut T) -> bool>(&self, condition: F) -> MutexGuard<'_, T> {
+        self.1
+            .wait_while_poisoned(self.0.lock_poisoned(), condition)
+    }
+
+    pub fn notify_one(&self) {
+        self.1.notify_one();
+    }
+
+    pub fn notify_all(&self) {
+        self.1.notify_all();
     }
 }
