@@ -2,7 +2,11 @@ use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, Syst
 
 use std::collections::VecDeque;
 use std::env::current_exe;
-use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::sync::{
+    Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError,
+    WaitTimeoutResult,
+};
+use std::time::Duration;
 
 #[derive(Debug)]
 pub struct DualChannel<T: Clone> {
@@ -101,6 +105,118 @@ impl<'a, T> MutexTrait<'_, T> for Mutex<T> {
                 TryLockError::Poisoned(poisoned) => Some(poisoned.into_inner()),
                 TryLockError::WouldBlock => None,
             },
+        }
+    }
+}
+
+pub trait RwLockTrait<'a, T> {
+    fn read_poisoned(&self) -> RwLockReadGuard<'_, T>;
+
+    fn try_read_poisoned(&self) -> Option<RwLockReadGuard<'_, T>>;
+
+    fn write_poisoned(&self) -> RwLockWriteGuard<'_, T>;
+
+    fn try_write_poisoned(&self) -> Option<RwLockWriteGuard<'_, T>>;
+}
+
+impl<'a, T> RwLockTrait<'_, T> for RwLock<T> {
+    fn read_poisoned(&self) -> RwLockReadGuard<'_, T> {
+        match self.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn try_read_poisoned(&self) -> Option<RwLockReadGuard<'_, T>> {
+        match self.try_read() {
+            Ok(guard) => Some(guard),
+            Err(error) => match error {
+                TryLockError::Poisoned(poisoned) => Some(poisoned.into_inner()),
+                TryLockError::WouldBlock => None,
+            },
+        }
+    }
+
+    fn write_poisoned(&self) -> RwLockWriteGuard<'_, T> {
+        match self.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn try_write_poisoned(&self) -> Option<RwLockWriteGuard<'_, T>> {
+        match self.try_write() {
+            Ok(guard) => Some(guard),
+            Err(error) => match error {
+                TryLockError::Poisoned(poisoned) => Some(poisoned.into_inner()),
+                TryLockError::WouldBlock => None,
+            },
+        }
+    }
+}
+
+pub trait CondvarTrait {
+    fn wait_poisoned<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T>;
+
+    fn wait_timeout_poisoned<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult);
+
+    fn wait_timeout_while_poisoned<'a, T, F: FnMut(&mut T) -> bool>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+        condition: F,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult);
+
+    fn wait_while_poisoned<'a, T, F: FnMut(&mut T) -> bool>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        condition: F,
+    ) -> MutexGuard<'a, T>;
+}
+
+impl CondvarTrait for Condvar {
+    fn wait_poisoned<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+        match self.wait(guard) {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn wait_timeout_poisoned<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult) {
+        match self.wait_timeout(guard, dur) {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn wait_timeout_while_poisoned<'a, T, F: FnMut(&mut T) -> bool>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+        condition: F,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult) {
+        match self.wait_timeout_while(guard, dur, condition) {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn wait_while_poisoned<'a, T, F: FnMut(&mut T) -> bool>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        condition: F,
+    ) -> MutexGuard<'a, T> {
+        match self.wait_while(guard, condition) {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         }
     }
 }
