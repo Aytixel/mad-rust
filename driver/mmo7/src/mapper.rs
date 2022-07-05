@@ -140,8 +140,8 @@ impl Mapper {
 
             loop {
                 let mouse_relative_movement = {
-                    let mut mouse_relative_movement = mouse_relative_movement_condmutex_clone
-                        .wait_while_poisoned(|value| value.0 == 0 && value.1 == 0);
+                    let mut mouse_relative_movement =
+                        mouse_relative_movement_condmutex_clone.wait_poisoned();
                     let mouse_relative_movement_clone = mouse_relative_movement.clone();
 
                     *mouse_relative_movement = (0, 0);
