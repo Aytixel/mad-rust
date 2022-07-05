@@ -219,7 +219,7 @@ fn listening_new_device(
                                                 device_list_mutex
                                                     .lock_poisoned()
                                                     .remove(&serial_number);
-                                                host.send(Message::DeviceListUpdate);
+                                                host.send(Message::DeviceListUpdate).ok();
                                             });
                                         }
                                     }
@@ -303,7 +303,7 @@ fn run_device(
                         ) {
                             println!("{} connected", serial_number);
 
-                            dual_channel.send(Message::DeviceListUpdate);
+                            dual_channel.send(Message::DeviceListUpdate).ok();
 
                             let mut buffer = [0; 8];
                             let mut mapper = Mapper::new(
@@ -380,10 +380,12 @@ fn run_connection(
         let mut timer = Timer::new(Duration::from_millis(100));
 
         loop {
-            if let Some((is_running, data)) = client_dualchannel.recv() {
+            if let Ok(Some((is_running, data))) = client_dualchannel.try_recv() {
                 if is_running {
                     if data.len() == 0 {
-                        client_dualchannel.send((true, driver_configuration_descriptor.to_bytes()));
+                        client_dualchannel
+                            .send((true, driver_configuration_descriptor.to_bytes()))
+                            .ok();
 
                         update_device_list(&client_dualchannel, device_list_mutex.clone());
                     } else {
@@ -395,14 +397,16 @@ fn run_connection(
                                     .config
                                     .get(&request_device_config.serial_number)
                                 {
-                                    client_dualchannel.send((
-                                        true,
-                                        DeviceConfig::new(
-                                            request_device_config.serial_number,
-                                            mouse_config.to_config(),
-                                        )
-                                        .to_bytes(),
-                                    ));
+                                    client_dualchannel
+                                        .send((
+                                            true,
+                                            DeviceConfig::new(
+                                                request_device_config.serial_number,
+                                                mouse_config.to_config(),
+                                            )
+                                            .to_bytes(),
+                                        ))
+                                        .ok();
                                 }
                             }
                             Commands::DeviceConfig(device_config) => {
@@ -420,7 +424,7 @@ fn run_connection(
                 }
             }
 
-            if let Some(message) = child.recv() {
+            if let Ok(Some(message)) = child.try_recv() {
                 match message {
                     Message::DeviceListUpdate => {
                         update_device_list(&client_dualchannel, device_list_mutex.clone())
@@ -443,5 +447,7 @@ fn update_device_list(
         serial_number_vec.push(serial_number.clone());
     }
 
-    client_dualchannel.send((true, DeviceList::new(serial_number_vec).to_bytes()));
+    client_dualchannel
+        .send((true, DeviceList::new(serial_number_vec).to_bytes()))
+        .ok();
 }

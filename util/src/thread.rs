@@ -1,23 +1,22 @@
+use barrage::{unbounded, Disconnected, Receiver, RecvFut, SendFut, Sender, SharedReceiver};
 use sysinfo::{get_current_pid, ProcessExt, ProcessRefreshKind, RefreshKind, System, SystemExt};
 
-use std::collections::VecDeque;
 use std::env::current_exe;
 use std::sync::{
-    Arc, Condvar, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    Condvar, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
     TryLockError, WaitTimeoutResult,
 };
 use std::time::Duration;
 
-#[derive(Debug)]
-pub struct DualChannel<T: Clone> {
-    tx: Arc<Mutex<VecDeque<T>>>,
-    rx: Arc<Mutex<VecDeque<T>>>,
+pub struct DualChannel<T: Clone + Unpin> {
+    tx: Sender<T>,
+    rx: Receiver<T>,
 }
 
-unsafe impl<T: Clone> Send for DualChannel<T> {}
-unsafe impl<T: Clone> Sync for DualChannel<T> {}
+unsafe impl<T: Clone + Unpin> Send for DualChannel<T> {}
+unsafe impl<T: Clone + Unpin> Sync for DualChannel<T> {}
 
-impl<T: Clone> Clone for DualChannel<T> {
+impl<T: Clone + Unpin> Clone for DualChannel<T> {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
@@ -26,41 +25,49 @@ impl<T: Clone> Clone for DualChannel<T> {
     }
 }
 
-impl<T: Clone> DualChannel<T> {
+impl<T: Clone + Unpin> DualChannel<T> {
     pub fn new() -> (Self, Self) {
-        let host = Arc::new(Mutex::new(VecDeque::new()));
-        let child = Arc::new(Mutex::new(VecDeque::new()));
+        let host = unbounded();
+        let child = unbounded();
 
         (
             Self {
-                tx: host.clone(),
-                rx: child.clone(),
+                tx: host.0,
+                rx: child.1,
             },
             Self {
-                tx: child,
-                rx: host,
+                tx: child.0,
+                rx: host.1,
             },
         )
     }
 
-    pub fn send(&self, t: T) {
-        let mut buffer = self.tx.lock_poisoned();
-
-        buffer.push_back(t);
+    pub fn send(&self, item: T) -> Result<(), barrage::SendError<T>> {
+        self.tx.send(item)
     }
 
-    pub fn recv(&self) -> Option<T> {
-        let mut buffer = self.rx.lock_poisoned();
-
-        buffer.pop_front()
+    pub fn try_send(&self, item: T) -> Result<(), barrage::TrySendError<T>> {
+        self.tx.try_send(item)
     }
 
-    pub fn lock_tx(&mut self) -> MutexGuard<VecDeque<T>> {
-        self.tx.lock_poisoned()
+    pub fn send_async(&self, item: T) -> SendFut<'_, T> {
+        self.tx.send_async(item)
     }
 
-    pub fn lock_rx(&mut self) -> MutexGuard<VecDeque<T>> {
-        self.rx.lock_poisoned()
+    pub fn recv(&self) -> Result<T, Disconnected> {
+        self.rx.recv()
+    }
+
+    pub fn try_recv(&self) -> Result<Option<T>, Disconnected> {
+        self.rx.try_recv()
+    }
+
+    pub fn recv_async(&self) -> RecvFut<'_, T> {
+        self.rx.recv_async()
+    }
+
+    pub fn into_shared(self) -> SharedReceiver<T> {
+        self.rx.into_shared()
     }
 }
 

@@ -38,18 +38,21 @@ impl Connection {
                     if let Some(connection_event) = global_state.pop_connection_event() {
                         match connection_event {
                             ConnectionEvent::RequestDeviceConfig(device_id) => {
-                                server_dualchannel.send((
-                                    device_id.thread_id,
-                                    true,
-                                    RequestDeviceConfig::new(device_id.serial_number).to_bytes(),
-                                ));
+                                server_dualchannel
+                                    .send((
+                                        device_id.thread_id,
+                                        true,
+                                        RequestDeviceConfig::new(device_id.serial_number)
+                                            .to_bytes(),
+                                    ))
+                                    .ok();
                             }
                         }
                     }
                 }
 
                 // receive data from clients
-                if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
+                if let Ok(Some((thread_id, is_running, data))) = server_dualchannel.try_recv() {
                     let mut driver_hashmap = global_state.driver_hashmap_mutex.lock_poisoned();
 
                     if is_running {
