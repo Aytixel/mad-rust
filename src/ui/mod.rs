@@ -281,7 +281,7 @@ impl App {
             };
 
         if let Some(selected_device_id) = selected_device_id_option.clone() {
-            if let Some(driver) = driver_hashmap.get(&selected_device_id.thread_id) {
+            if let Some(driver) = driver_hashmap.get(&selected_device_id.socket_addr) {
                 if !driver
                     .device_list
                     .serial_number_vec

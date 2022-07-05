@@ -1,104 +1,144 @@
 pub use server::Server;
 
 pub mod server {
-    use std::io::prelude::*;
-    use std::net::TcpListener;
-    use std::thread::{current, spawn, ThreadId};
+    use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::time::{Duration, Instant};
 
     use crate::thread::DualChannel;
     use crate::time::{Timer, TIMEOUT_1S};
 
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::spawn;
+    use tokio::sync::Mutex;
+
     pub struct Server {
-        pub dual_channel: DualChannel<(ThreadId, bool, Vec<u8>)>,
+        pub dual_channel: DualChannel<(SocketAddr, bool, Vec<u8>)>,
     }
 
     impl Server {
-        pub fn new() -> Self {
-            let (host, child) = DualChannel::<(ThreadId, bool, Vec<u8>)>::new();
+        pub async fn new() -> Self {
+            let (host, child) = DualChannel::<(SocketAddr, bool, Vec<u8>)>::new();
 
-            spawn(move || {
-                let mut timer = Timer::new(TIMEOUT_1S);
+            spawn(async move {
+                if let Ok(listener) = TcpListener::bind("127.0.0.1:651").await {
+                    loop {
+                        if let Ok((socket, socket_addr)) = listener.accept().await {
+                            let child = child.clone();
+                            let socket_mutex = Arc::new(Mutex::new(socket));
 
-                loop {
-                    if let Ok(listener) = TcpListener::bind("127.0.0.1:651") {
-                        for mut socket in listener.incoming().filter_map(|x| x.ok()) {
-                            if let Ok(_) = socket.set_nonblocking(true) {
-                                let child = child.clone();
+                            spawn(async move {
+                                // data communication handling
+                                let last_packet_receive_mutex =
+                                    Arc::new(Mutex::new(Instant::now()));
+                                let running = Arc::new(AtomicBool::new(true));
 
-                                spawn(move || {
-                                    // data communication handling
-                                    let mut timer = Timer::new(Duration::from_millis(100));
-                                    let mut size_buffer = [0; 8];
-                                    let mut last_packet_send = Instant::now();
-                                    let mut last_packet_receive = Instant::now();
-                                    let thread_id = current().id();
+                                child.send((socket_addr, true, vec![])).ok();
 
-                                    child.send((thread_id, true, vec![])).ok();
+                                {
+                                    let child = child.clone();
+                                    let socket_mutex = socket_mutex.clone();
+                                    let last_packet_receive_mutex =
+                                        last_packet_receive_mutex.clone();
+                                    let running = running.clone();
 
-                                    'main: loop {
-                                        // timeout packet
-                                        if last_packet_receive.elapsed() > Duration::from_secs(5) {
-                                            child.send((thread_id, false, vec![])).ok();
-                                            break;
-                                        }
+                                    spawn(async move {
+                                        let mut timer = Timer::new(TIMEOUT_1S);
 
-                                        // life packet
-                                        if last_packet_send.elapsed() > Duration::from_secs(1) {
-                                            socket.write_all(&u64::MAX.to_be_bytes()).ok();
-
-                                            last_packet_send = Instant::now();
-                                        }
-
-                                        // data from the client
-                                        if let Ok(_) = socket.read_exact(&mut size_buffer) {
-                                            let size = u64::from_be_bytes(size_buffer);
-
-                                            // connection end
-                                            if size == 0 {
-                                                child.send((thread_id, false, vec![])).ok();
+                                        while running.load(Ordering::SeqCst) {
+                                            // timeout packet
+                                            if last_packet_receive_mutex.lock().await.elapsed()
+                                                > Duration::from_secs(5)
+                                            {
+                                                child.send((socket_addr, false, vec![])).ok();
+                                                running.store(false, Ordering::SeqCst);
                                                 break;
                                             }
 
                                             // life packet
-                                            last_packet_receive = Instant::now();
-
-                                            // if the packet is bigger than 20 Megabyte it's considered as life packet
-                                            if size < 20000000 {
-                                                let mut buffer = vec![0; size as usize];
-
-                                                if let Ok(_) = socket.read_exact(&mut buffer) {
-                                                    child.send((thread_id, true, buffer)).ok();
-                                                }
-                                            }
+                                            socket_mutex
+                                                .lock()
+                                                .await
+                                                .write_all(&u64::MAX.to_be_bytes())
+                                                .await
+                                                .ok();
+                                            timer.wait_async().await;
                                         }
+                                    });
+                                }
 
-                                        // data to the client
-                                        while let Ok(Some((thread_id_, is_running, data))) =
-                                            child.try_recv()
-                                        {
-                                            if thread_id_ == thread_id {
+                                {
+                                    let child = child.clone();
+                                    let socket_mutex = socket_mutex.clone();
+                                    let running = running.clone();
+
+                                    spawn(async move {
+                                        let mut size_buffer = [0; 8];
+
+                                        // data from the client
+                                        while running.load(Ordering::SeqCst) {
+                                            let mut socket = socket_mutex.lock().await;
+
+                                            if let Ok(_) = socket.read_exact(&mut size_buffer).await
+                                            {
+                                                let size = u64::from_be_bytes(size_buffer);
+
                                                 // connection end
-                                                if !is_running {
-                                                    socket.write_all(&0u64.to_be_bytes()).ok();
-                                                    break 'main;
+                                                if size == 0 {
+                                                    child.send((socket_addr, false, vec![])).ok();
+                                                    running.store(false, Ordering::SeqCst);
+                                                    break;
                                                 }
 
-                                                socket
-                                                    .write_all(&(data.len() as u64).to_be_bytes())
-                                                    .ok();
-                                                socket.write_all(&data).ok();
+                                                // life packet
+                                                *last_packet_receive_mutex.lock().await =
+                                                    Instant::now();
+
+                                                // if the packet is bigger than 20 Megabyte it's considered as life packet
+                                                if size < 20000000 {
+                                                    let mut buffer = vec![0; size as usize];
+
+                                                    if let Ok(_) =
+                                                        socket.read_exact(&mut buffer).await
+                                                    {
+                                                        child
+                                                            .send((socket_addr, true, buffer))
+                                                            .ok();
+                                                    }
+                                                }
                                             }
                                         }
+                                    });
+                                }
 
-                                        timer.wait();
+                                // data to the client
+                                while running.load(Ordering::SeqCst) {
+                                    if let Ok((socket_addr_, is_running, data)) =
+                                        child.recv_async().await
+                                    {
+                                        if socket_addr_ == socket_addr {
+                                            let mut socket = socket_mutex.lock().await;
+
+                                            // connection end
+                                            if !is_running {
+                                                socket.write_all(&0u64.to_be_bytes()).await.ok();
+                                                running.store(false, Ordering::SeqCst);
+                                                break;
+                                            }
+
+                                            socket
+                                                .write_all(&(data.len() as u64).to_be_bytes())
+                                                .await
+                                                .ok();
+                                            socket.write_all(&data).await.ok();
+                                        }
                                     }
-                                });
-                            }
+                                }
+                            });
                         }
                     }
-
-                    timer.wait();
                 }
             });
 

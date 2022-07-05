@@ -7,9 +7,9 @@ mod ui;
 mod window;
 
 use std::collections::VecDeque;
+use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
-use std::thread::ThreadId;
 
 use connection::Connection;
 use ui::App;
@@ -44,14 +44,14 @@ impl Driver {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct DeviceId {
-    thread_id: ThreadId,
+    socket_addr: SocketAddr,
     serial_number: String,
 }
 
 impl DeviceId {
-    fn new(thread_id: ThreadId, serial_number: String) -> Self {
+    fn new(socket_addr: SocketAddr, serial_number: String) -> Self {
         Self {
-            thread_id,
+            socket_addr,
             serial_number,
         }
     }
@@ -63,7 +63,7 @@ enum ConnectionEvent {
 
 pub struct GlobalState {
     do_redraw: AtomicBool,
-    driver_hashmap_mutex: Mutex<HashMap<ThreadId, Driver>>,
+    driver_hashmap_mutex: Mutex<HashMap<SocketAddr, Driver>>,
     device_id_vec_mutex: Mutex<Vec<DeviceId>>,
     selected_device_id_option_mutex: Mutex<Option<DeviceId>>,
     selected_device_config_option_mutex: Mutex<Option<DeviceConfig>>,
@@ -105,12 +105,13 @@ impl GlobalStateTrait for GlobalState {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     if !kill_double() {
         let global_state = GlobalState::new();
-        let connection = Connection::new(global_state.clone());
+        let connection = Connection::new(global_state.clone()).await;
 
-        connection.run();
+        connection.run().await;
 
         let mut window_options =
             WindowOptions::new("Mad rust", 1080, 720, include_bytes!("../ui/icon.png"));

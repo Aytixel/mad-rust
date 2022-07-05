@@ -36,4 +36,14 @@ impl Timer {
 
         self.last_update = Instant::now();
     }
+
+    pub async fn wait_async(&mut self) {
+        let elapsed = self.last_update.elapsed();
+
+        if elapsed < self.frame_duration {
+            tokio::time::sleep(self.frame_duration - elapsed).await;
+        }
+
+        self.last_update = Instant::now();
+    }
 }

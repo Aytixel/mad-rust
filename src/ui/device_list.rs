@@ -1,6 +1,6 @@
 use std::cell::RefCell;
+use std::net::SocketAddr;
 use std::rc::Rc;
-use std::thread::ThreadId;
 use std::time::Duration;
 use std::vec;
 
@@ -72,7 +72,7 @@ impl DeviceData {
 
 pub struct DeviceList {
     device_data_vec: Vec<DeviceData>,
-    device_icon_option_hashmap: HashMap<ThreadId, Option<Rc<DeviceIcon>>>,
+    device_icon_option_hashmap: HashMap<SocketAddr, Option<Rc<DeviceIcon>>>,
     image_id: u32,
 }
 
@@ -108,7 +108,7 @@ impl DocumentTrait for DeviceList {
             }
 
             if has_update || !device_data.to_remove {
-                device_icon_to_keep_hashset.insert(device_data.device_id.thread_id);
+                device_icon_to_keep_hashset.insert(device_data.device_id.socket_addr);
 
                 // keep the device if animation not ended or not to remove
                 self.device_data_vec.push(device_data);
@@ -118,15 +118,15 @@ impl DocumentTrait for DeviceList {
         }
 
         // remove unused icon
-        for thread_id in self.device_icon_option_hashmap.clone().keys() {
-            if !device_icon_to_keep_hashset.contains(thread_id)
-                && !driver_hashmap.contains_key(thread_id)
+        for socket_addr in self.device_icon_option_hashmap.clone().keys() {
+            if !device_icon_to_keep_hashset.contains(socket_addr)
+                && !driver_hashmap.contains_key(socket_addr)
             {
-                if let Some(device_icon) = self.device_icon_option_hashmap[thread_id].clone() {
+                if let Some(device_icon) = self.device_icon_option_hashmap[socket_addr].clone() {
                     txn.delete_image(device_icon.image_key);
                 }
 
-                self.device_icon_option_hashmap.remove(thread_id);
+                self.device_icon_option_hashmap.remove(socket_addr);
             }
         }
 
@@ -148,11 +148,11 @@ impl DocumentTrait for DeviceList {
         let mut device_button_layout_point = LayoutPoint::zero();
         let mut device_data_to_keep_hashset = HashSet::new();
 
-        for (thread_id, driver) in driver_hashmap.iter() {
+        for (socket_addr, driver) in driver_hashmap.iter() {
             // initialize icon if needed
-            if let None = self.device_icon_option_hashmap.get(thread_id) {
+            if let None = self.device_icon_option_hashmap.get(socket_addr) {
                 self.device_icon_option_hashmap.insert(
-                    *thread_id,
+                    *socket_addr,
                     match load_from_memory(
                         driver
                             .driver_configuration_descriptor
@@ -205,7 +205,7 @@ impl DocumentTrait for DeviceList {
                         .enumerate()
                         .find(|(_, device_data)| -> bool {
                             device_data.device_id
-                                == DeviceId::new(*thread_id, serial_number.clone())
+                                == DeviceId::new(*socket_addr, serial_number.clone())
                         })
                 {
                     device_data_to_keep_hashset.insert(index);
@@ -220,9 +220,9 @@ impl DocumentTrait for DeviceList {
                     device_data_to_keep_hashset.insert(self.device_data_vec.len());
 
                     self.device_data_vec.push(DeviceData::new(
-                        DeviceId::new(*thread_id, serial_number.clone()),
+                        DeviceId::new(*socket_addr, serial_number.clone()),
                         driver.driver_configuration_descriptor.device_name.clone(),
-                        self.device_icon_option_hashmap[thread_id].clone(),
+                        self.device_icon_option_hashmap[socket_addr].clone(),
                         animation,
                         wrapper.api.borrow().generate_property_binding_key(),
                     ));
