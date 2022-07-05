@@ -50,7 +50,7 @@ impl Connection {
 
                 // receive data from clients
                 if let Some((thread_id, is_running, data)) = server_dualchannel.recv() {
-                    let mut driver_hashmap = global_state.driver_hashmap_mutex.lock_safe();
+                    let mut driver_hashmap = global_state.driver_hashmap_mutex.lock_poisoned();
 
                     if is_running {
                         if data.len() > 0 {
@@ -74,7 +74,7 @@ impl Connection {
                                 Commands::DeviceConfig(device_config) => {
                                     let mut selected_device_config_option = global_state
                                         .selected_device_config_option_mutex
-                                        .lock_safe();
+                                        .lock_poisoned();
 
                                     *selected_device_config_option = Some(device_config);
                                 }

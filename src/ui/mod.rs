@@ -139,11 +139,11 @@ impl App {
                             let mut selected_device_id_option = wrapper
                                 .global_state
                                 .selected_device_id_option_mutex
-                                .lock_safe();
+                                .lock_poisoned();
                             let mut selected_device_config_option = wrapper
                                 .global_state
                                 .selected_device_config_option_mutex
-                                .lock_safe();
+                                .lock_poisoned();
 
                             *selected_device_id_option = None;
                             *selected_device_config_option = None;
@@ -157,11 +157,11 @@ impl App {
                             );
 
                             let device_id_vec =
-                                wrapper.global_state.device_id_vec_mutex.lock_safe();
+                                wrapper.global_state.device_id_vec_mutex.lock_poisoned();
                             let mut selected_device_id_option = wrapper
                                 .global_state
                                 .selected_device_id_option_mutex
-                                .lock_safe();
+                                .lock_poisoned();
 
                             *selected_device_id_option =
                                 Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
@@ -256,15 +256,15 @@ impl App {
 
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         // switch back to device list when the device disconnect
-        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let selected_device_id_option = wrapper
             .global_state
             .selected_device_id_option_mutex
-            .lock_safe();
+            .lock_poisoned();
         let selected_device_config_option = wrapper
             .global_state
             .selected_device_config_option_mutex
-            .lock_safe();
+            .lock_poisoned();
 
         let mut switch_to_device_list =
             |mut selected_device_id_option: MutexGuard<Option<DeviceId>>,

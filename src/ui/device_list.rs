@@ -92,7 +92,7 @@ impl DocumentTrait for DeviceList {
     }
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
-        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let mut floats = vec![];
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();
         let mut device_icon_to_keep_hashset = HashSet::new();
@@ -144,7 +144,7 @@ impl DocumentTrait for DeviceList {
         mut frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
-        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_safe();
+        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let mut device_button_layout_point = LayoutPoint::zero();
         let mut device_data_to_keep_hashset = HashSet::new();
 
@@ -266,7 +266,7 @@ impl DocumentTrait for DeviceList {
     ) {
         let builder = &mut frame_builder.builder;
         let mut device_button_layout_point = LayoutPoint::zero();
-        let mut device_id_vec = wrapper.global_state.device_id_vec_mutex.lock_safe();
+        let mut device_id_vec = wrapper.global_state.device_id_vec_mutex.lock_poisoned();
 
         device_id_vec.clear();
 

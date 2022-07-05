@@ -84,12 +84,14 @@ impl GlobalState {
 
     fn push_connection_event(&self, event: ConnectionEvent) {
         self.connection_event_queue_mutex
-            .lock_safe()
+            .lock_poisoned()
             .push_back(event);
     }
 
     fn pop_connection_event(&self) -> Option<ConnectionEvent> {
-        self.connection_event_queue_mutex.lock_safe().pop_front()
+        self.connection_event_queue_mutex
+            .lock_poisoned()
+            .pop_front()
     }
 }
 

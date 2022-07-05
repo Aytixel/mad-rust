@@ -142,7 +142,7 @@ fn watch_config_update(
         let mut timer = Timer::new(TIMEOUT_1S * 10);
 
         loop {
-            if mouses_config_mutex.lock_safe().update() {
+            if mouses_config_mutex.lock_poisoned().update() {
                 mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
             }
 
@@ -177,13 +177,13 @@ fn listening_new_device(
                                             TIMEOUT_1S,
                                         )
                                     {
-                                        let mut device_list = device_list_mutex.lock_safe();
+                                        let mut device_list = device_list_mutex.lock_poisoned();
 
                                         if let None = device_list.get(&serial_number) {
                                             {
                                                 // create a default config if needed
                                                 let mut mouses_config =
-                                                    mouses_config_mutex.lock_safe();
+                                                    mouses_config_mutex.lock_poisoned();
 
                                                 if !mouses_config
                                                     .config
@@ -217,7 +217,7 @@ fn listening_new_device(
                                                 );
 
                                                 device_list_mutex
-                                                    .lock_safe()
+                                                    .lock_poisoned()
                                                     .remove(&serial_number);
                                                 host.send(Message::DeviceListUpdate);
                                             });
@@ -389,7 +389,7 @@ fn run_connection(
                     } else {
                         match Commands::from(data) {
                             Commands::RequestDeviceConfig(request_device_config) => {
-                                let mouses_config = mouses_config_mutex.lock_safe();
+                                let mouses_config = mouses_config_mutex.lock_poisoned();
 
                                 if let Some(mouse_config) = mouses_config
                                     .config
@@ -406,7 +406,7 @@ fn run_connection(
                                 }
                             }
                             Commands::DeviceConfig(device_config) => {
-                                let mut mouses_config = mouses_config_mutex.lock_safe();
+                                let mut mouses_config = mouses_config_mutex.lock_poisoned();
 
                                 mouses_config.config.insert(
                                     device_config.serial_number,
@@ -439,7 +439,7 @@ fn update_device_list(
 ) {
     let mut serial_number_vec = vec![];
 
-    for serial_number in device_list_mutex.lock_safe().iter() {
+    for serial_number in device_list_mutex.lock_poisoned().iter() {
         serial_number_vec.push(serial_number.clone());
     }
 

@@ -128,7 +128,7 @@ impl Mapper {
         serial_number: String,
     ) -> Self {
         let last_mouses_config_state_id = mouses_config_state_id.load(Ordering::SeqCst);
-        let button_configs = mouses_config_mutex.lock_safe().config[&serial_number].clone();
+        let button_configs = mouses_config_mutex.lock_poisoned().config[&serial_number].clone();
         let (emulation_worker_rx, emulation_worker_tx) = channel();
         let mouse_relative_movement_mutex = Arc::new(Mutex::new(None));
         let mouse_relative_movement_mutex_clone = mouse_relative_movement_mutex.clone();
@@ -143,7 +143,7 @@ impl Mapper {
             loop {
                 {
                     let mut mouse_relative_movement: MutexGuard<Option<(i32, i32)>> =
-                        mouse_relative_movement_mutex_clone.lock_safe();
+                        mouse_relative_movement_mutex_clone.lock_poisoned();
 
                     if let Some(relative_movement) = mouse_relative_movement.take() {
                         enigo.mouse_move_relative(relative_movement.0, relative_movement.1);
@@ -221,7 +221,7 @@ impl Mapper {
     pub fn emulate(&mut self, buffer: &[u8]) {
         if self.config_has_change() {
             self.button_configs_token = ButtonConfigsToken::from_config(
-                self.mouses_config_mutex.lock_safe().config[&self.serial_number].clone(),
+                self.mouses_config_mutex.lock_poisoned().config[&self.serial_number].clone(),
             );
         }
 
@@ -233,7 +233,7 @@ impl Mapper {
     pub fn emulate_only_mapped(&mut self, buffer: &[u8]) {
         if self.config_has_change() {
             self.button_configs_token = ButtonConfigsToken::from_config(
-                self.mouses_config_mutex.lock_safe().config[&self.serial_number].clone(),
+                self.mouses_config_mutex.lock_poisoned().config[&self.serial_number].clone(),
             );
         }
 
@@ -309,7 +309,7 @@ impl Mapper {
 
         {
             if let Some(mut mouse_relative_movement) =
-                self.mouse_relative_movement_mutex.try_lock_safe()
+                self.mouse_relative_movement_mutex.try_lock_poisoned()
             {
                 if let None = *mouse_relative_movement {
                     *mouse_relative_movement = self.mouse_relative_movement.take();

@@ -125,7 +125,7 @@ impl App {
         let builder = &mut frame_builder.builder;
         let has_previous_document = global_state
             .selected_device_id_option_mutex
-            .lock_safe()
+            .lock_poisoned()
             .is_some();
 
         // title bar

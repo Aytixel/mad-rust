@@ -40,23 +40,23 @@ impl<T: Clone> DualChannel<T> {
     }
 
     pub fn send(&self, t: T) {
-        let mut buffer = self.tx.lock_safe();
+        let mut buffer = self.tx.lock_poisoned();
 
         buffer.push_back(t);
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut buffer = self.rx.lock_safe();
+        let mut buffer = self.rx.lock_poisoned();
 
         buffer.pop_front()
     }
 
     pub fn lock_tx(&mut self) -> MutexGuard<VecDeque<T>> {
-        self.tx.lock_safe()
+        self.tx.lock_poisoned()
     }
 
     pub fn lock_rx(&mut self) -> MutexGuard<VecDeque<T>> {
-        self.rx.lock_safe()
+        self.rx.lock_poisoned()
     }
 }
 
@@ -81,20 +81,20 @@ pub fn kill_double() -> bool {
 }
 
 pub trait MutexTrait<'a, T> {
-    fn lock_safe(&self) -> MutexGuard<'_, T>;
+    fn lock_poisoned(&self) -> MutexGuard<'_, T>;
 
-    fn try_lock_safe(&self) -> Option<MutexGuard<'_, T>>;
+    fn try_lock_poisoned(&self) -> Option<MutexGuard<'_, T>>;
 }
 
 impl<'a, T> MutexTrait<'_, T> for Mutex<T> {
-    fn lock_safe(&self) -> MutexGuard<'_, T> {
+    fn lock_poisoned(&self) -> MutexGuard<'_, T> {
         match self.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
     }
 
-    fn try_lock_safe(&self) -> Option<MutexGuard<'_, T>> {
+    fn try_lock_poisoned(&self) -> Option<MutexGuard<'_, T>> {
         match self.try_lock() {
             Ok(guard) => Some(guard),
             Err(error) => match error {
