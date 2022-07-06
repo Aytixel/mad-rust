@@ -22,8 +22,8 @@ pub mod server {
         pub async fn new() -> Self {
             let (host, child) = DualChannel::<(SocketAddr, bool, Vec<u8>)>::new();
 
-            spawn(async move {
-                if let Ok(listener) = TcpListener::bind("127.0.0.1:651").await {
+            if let Ok(listener) = TcpListener::bind("127.0.0.1:651").await {
+                spawn(async move {
                     loop {
                         if let Ok((socket, socket_addr)) = listener.accept().await {
                             let child = child.clone();
@@ -146,8 +146,8 @@ pub mod server {
                             });
                         }
                     }
-                }
-            });
+                });
+            }
 
             Self { dual_channel: host }
         }
