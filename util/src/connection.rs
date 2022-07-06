@@ -9,6 +9,7 @@ pub mod server {
     use crate::thread::DualChannel;
     use crate::time::{Timer, TIMEOUT_1S};
 
+    use futures::future::{abortable, AbortHandle};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
     use tokio::spawn;
@@ -34,8 +35,26 @@ pub mod server {
                                 let last_packet_receive_mutex =
                                     Arc::new(Mutex::new(Instant::now()));
                                 let running = Arc::new(AtomicBool::new(true));
+                                let recv_abort_handle_mutex: Arc<Mutex<Option<AbortHandle>>> =
+                                    Arc::new(Mutex::new(None));
 
                                 child.send_async((socket_addr, true, vec![])).await.ok();
+
+                                async fn shutdown_client_connection(
+                                    running: Arc<AtomicBool>,
+                                    socket_addr: SocketAddr,
+                                    child: DualChannel<(SocketAddr, bool, Vec<u8>)>,
+                                    recv_abort_handle_mutex: Arc<Mutex<Option<AbortHandle>>>,
+                                ) {
+                                    running.store(false, Ordering::SeqCst);
+                                    child.send_async((socket_addr, false, vec![])).await.ok();
+
+                                    if let Some(recv_abort_handle) =
+                                        recv_abort_handle_mutex.lock().await.take()
+                                    {
+                                        recv_abort_handle.abort();
+                                    }
+                                }
 
                                 {
                                     let child = child.clone();
@@ -43,6 +62,7 @@ pub mod server {
                                     let last_packet_receive_mutex =
                                         last_packet_receive_mutex.clone();
                                     let running = running.clone();
+                                    let recv_abort_handle_mutex = recv_abort_handle_mutex.clone();
 
                                     spawn(async move {
                                         let mut timer = Timer::new(TIMEOUT_1S);
@@ -52,11 +72,13 @@ pub mod server {
                                             if last_packet_receive_mutex.lock().await.elapsed()
                                                 > Duration::from_secs(5)
                                             {
-                                                running.store(false, Ordering::SeqCst);
-                                                child
-                                                    .send_async((socket_addr, false, vec![]))
-                                                    .await
-                                                    .ok();
+                                                shutdown_client_connection(
+                                                    running,
+                                                    socket_addr,
+                                                    child,
+                                                    recv_abort_handle_mutex,
+                                                )
+                                                .await;
                                                 break;
                                             }
 
@@ -76,6 +98,7 @@ pub mod server {
                                     let child = child.clone();
                                     let socket_mutex = socket_mutex.clone();
                                     let running = running.clone();
+                                    let recv_abort_handle_mutex = recv_abort_handle_mutex.clone();
 
                                     spawn(async move {
                                         let mut size_buffer = [0; 8];
@@ -90,11 +113,13 @@ pub mod server {
 
                                                 // connection end
                                                 if size == 0 {
-                                                    running.store(false, Ordering::SeqCst);
-                                                    child
-                                                        .send_async((socket_addr, false, vec![]))
-                                                        .await
-                                                        .ok();
+                                                    shutdown_client_connection(
+                                                        running,
+                                                        socket_addr,
+                                                        child,
+                                                        recv_abort_handle_mutex,
+                                                    )
+                                                    .await;
                                                     break;
                                                 }
 
@@ -122,8 +147,12 @@ pub mod server {
 
                                 // data to the client
                                 while running.load(Ordering::SeqCst) {
-                                    if let Ok((socket_addr_, is_running, data)) =
-                                        child.recv_async().await
+                                    let (recv_async, abort_handle) = abortable(child.recv_async());
+
+                                    *recv_abort_handle_mutex.lock().await = Some(abort_handle);
+
+                                    if let Ok(Ok((socket_addr_, is_running, data))) =
+                                        recv_async.await
                                     {
                                         if socket_addr_ == socket_addr {
                                             let mut socket = socket_mutex.lock().await;
