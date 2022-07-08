@@ -1643,6 +1643,7 @@ dependencies = [
  "rusb",
  "serde",
  "thread-priority",
+ "tokio",
  "util",
  "winres",
 ]
@@ -2723,6 +2724,7 @@ dependencies = [
  "bincode",
  "dirs",
  "futures",
+ "hashbrown",
  "notify",
  "serde",
  "serde_json",

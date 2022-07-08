@@ -4,11 +4,10 @@ use std::time::Duration;
 use crate::window::GlobalStateTrait;
 use crate::{ConnectionEvent, Driver, GlobalState};
 
-use tokio::spawn;
+use tokio::{spawn, time};
 use util::connection::command::{CommandTrait, Commands, RequestDeviceConfig};
 use util::connection::Server;
 use util::thread::MutexTrait;
-use util::time::Timer;
 
 pub struct Connection {
     server: Server,
@@ -31,7 +30,7 @@ impl Connection {
             let server_dualchannel = self.server.dual_channel.clone();
 
             spawn(async move {
-                let mut timer = Timer::new(Duration::from_millis(100));
+                let mut interval = time::interval(Duration::from_millis(100));
 
                 loop {
                     // send data to clients
@@ -53,7 +52,7 @@ impl Connection {
                         }
                     }
 
-                    timer.wait_async().await;
+                    interval.tick().await;
                 }
             });
         }

@@ -107,39 +107,41 @@ impl GlobalStateTrait for GlobalState {
 
 #[tokio::main]
 async fn main() {
-    if !kill_double() {
-        let global_state = GlobalState::new();
-        let connection = Connection::new(global_state.clone()).await;
-
-        connection.run().await;
-
-        let mut window_options =
-            WindowOptions::new("Mad rust", 1080, 720, include_bytes!("../ui/icon.png"));
-
-        window_options.transparent = true;
-        window_options.decorations = false;
-        window_options.min_size = Some(PhysicalSize::new(533, 300));
-
-        let mut window = Window::new(window_options, global_state);
-
-        {
-            // add background blur effect on windows and macos
-            #[cfg(target_os = "windows")]
-            apply_blur(&window.wrapper.context.window(), None).ok();
-
-            #[cfg(target_os = "macos")]
-            apply_vibrancy(
-                &window.context.window(),
-                NSVisualEffectMaterial::AppearanceBased,
-            )
-            .ok();
-        }
-
-        window
-            .wrapper
-            .load_font_file("OpenSans", include_bytes!("../ui/font/OpenSans.ttf"));
-        window.set_window::<App>();
-        window.run();
-        window.deinit();
+    if kill_double() {
+        return;
     }
+
+    let global_state = GlobalState::new();
+    let connection = Connection::new(global_state.clone()).await;
+
+    connection.run().await;
+
+    let mut window_options =
+        WindowOptions::new("Mad rust", 1080, 720, include_bytes!("../ui/icon.png"));
+
+    window_options.transparent = true;
+    window_options.decorations = false;
+    window_options.min_size = Some(PhysicalSize::new(533, 300));
+
+    let mut window = Window::new(window_options, global_state);
+
+    {
+        // add background blur effect on windows and macos
+        #[cfg(target_os = "windows")]
+        apply_blur(&window.wrapper.context.window(), None).ok();
+
+        #[cfg(target_os = "macos")]
+        apply_vibrancy(
+            &window.context.window(),
+            NSVisualEffectMaterial::AppearanceBased,
+        )
+        .ok();
+    }
+
+    window
+        .wrapper
+        .load_font_file("OpenSans", include_bytes!("../ui/font/OpenSans.ttf"));
+    window.set_window::<App>();
+    window.run();
+    window.deinit();
 }

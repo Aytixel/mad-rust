@@ -14,10 +14,11 @@ use mapper::Mapper;
 use rusb::{Context, DeviceHandle, UsbContext};
 use serde::{Deserialize, Serialize};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
+use tokio::time::{interval, MissedTickBehavior};
 use util::config::ConfigManager;
 use util::connection::{command::*, Client};
 use util::thread::{kill_double, DualChannel, MutexTrait};
-use util::time::{Timer, TIMEOUT_1S};
+use util::time::TIMEOUT_1S;
 
 const VID: u16 = 0x0738;
 const PID: u16 = 0x1713;
@@ -100,65 +101,72 @@ enum Message {
     DeviceListUpdate,
 }
 
-fn main() {
-    if !kill_double() {
-        let client = Client::new();
-        let client_dualchannel = client.dual_channel;
-        let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
-        let (host, child) = DualChannel::<Message>::new();
-        let icon_data = include_bytes!("../icon.png").to_vec();
-        let mouses_config_mutex = Arc::new(Mutex::new(ConfigManager::<MousesConfig>::new(
-            "mmo7_profiles",
-        )));
-        let mouses_config_state_id = Arc::new(AtomicU32::new(0));
-
-        watch_config_update(mouses_config_mutex.clone(), mouses_config_state_id.clone());
-        run_connection(
-            client_dualchannel,
-            child,
-            device_list_mutex.clone(),
-            icon_data,
-            mouses_config_mutex.clone(),
-            mouses_config_state_id.clone(),
-        );
-        listening_new_device(
-            host,
-            device_list_mutex,
-            mouses_config_mutex,
-            mouses_config_state_id,
-        );
+#[tokio::main]
+async fn main() {
+    if kill_double() {
+        return;
     }
+
+    set_current_thread_priority(ThreadPriority::Min).ok();
+
+    let client = Client::new().await;
+    let client_dualchannel = client.dual_channel;
+    let device_list_mutex = Arc::new(Mutex::new(HashSet::<String>::new()));
+    let (host, child) = DualChannel::<Message>::new();
+    let icon_data = include_bytes!("../icon.png").to_vec();
+    let mouses_config_mutex = Arc::new(tokio::sync::Mutex::new(
+        ConfigManager::<MousesConfig>::new("mmo7_profiles"),
+    ));
+    let mouses_config_state_id = Arc::new(AtomicU32::new(0));
+
+    watch_config_update(mouses_config_mutex.clone(), mouses_config_state_id.clone()).await;
+    run_connection(
+        client_dualchannel,
+        child,
+        device_list_mutex.clone(),
+        icon_data,
+        mouses_config_mutex.clone(),
+        mouses_config_state_id.clone(),
+    )
+    .await;
+    listening_new_device(
+        host,
+        device_list_mutex,
+        mouses_config_mutex,
+        mouses_config_state_id,
+    )
+    .await;
 }
 
-fn watch_config_update(
-    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+async fn watch_config_update(
+    mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
     mouses_config_state_id: Arc<AtomicU32>,
 ) {
     let mouses_config_mutex = mouses_config_mutex.clone();
 
-    spawn(move || {
-        set_current_thread_priority(ThreadPriority::Min).ok();
-
-        let mut timer = Timer::new(TIMEOUT_1S * 10);
+    tokio::spawn(async move {
+        let mut interval_ = interval(TIMEOUT_1S * 10);
 
         loop {
-            if mouses_config_mutex.lock_poisoned().update() {
+            if mouses_config_mutex.lock().await.update() {
                 mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
             }
 
-            timer.wait();
+            interval_.tick().await;
         }
     });
 }
 
 // device handling
-fn listening_new_device(
+async fn listening_new_device(
     host: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
-    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
     mouses_config_state_id: Arc<AtomicU32>,
 ) {
-    let mut timer = Timer::new(TIMEOUT_1S);
+    let mut interval_ = interval(TIMEOUT_1S);
+
+    interval_.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         if let Ok(context) = Context::new() {
@@ -169,12 +177,14 @@ fn listening_new_device(
                             && device_descriptor.product_id() == PID
                         {
                             if let Ok(device_handle) = device.open() {
-                                if let Ok(languages) = device_handle.read_languages(TIMEOUT_1S) {
+                                if let Ok(languages) =
+                                    device_handle.read_languages(Duration::from_millis(100))
+                                {
                                     if let Ok(serial_number) = device_handle
                                         .read_serial_number_string(
                                             languages[0],
                                             &device_descriptor,
-                                            TIMEOUT_1S,
+                                            Duration::from_millis(100),
                                         )
                                     {
                                         let mut device_list = device_list_mutex.lock_poisoned();
@@ -183,7 +193,7 @@ fn listening_new_device(
                                             {
                                                 // create a default config if needed
                                                 let mut mouses_config =
-                                                    mouses_config_mutex.lock_poisoned();
+                                                    mouses_config_mutex.lock().await;
 
                                                 if !mouses_config
                                                     .config
@@ -231,7 +241,7 @@ fn listening_new_device(
             }
         }
 
-        timer.wait();
+        interval_.tick().await;
     }
 }
 
@@ -269,7 +279,7 @@ fn find_device(serial_number: String) -> Option<DeviceHandle<Context>> {
 fn run_device(
     serial_number: String,
     dual_channel: DualChannel<Message>,
-    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
     mouses_config_state_id: Arc<AtomicU32>,
 ) {
     if let Some(mut device_handle) = find_device(serial_number.clone()) {
@@ -341,103 +351,110 @@ fn run_device(
 }
 
 // connection processing
-fn run_connection(
+async fn run_connection(
     client_dualchannel: DualChannel<(bool, Vec<u8>)>,
     child: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     icon_data: Vec<u8>,
-    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
     mouses_config_state_id: Arc<AtomicU32>,
 ) {
-    spawn(move || {
-        set_current_thread_priority(ThreadPriority::Min).ok();
+    {
+        let client_dualchannel = client_dualchannel.clone();
+        let device_list_mutex = device_list_mutex.clone();
 
-        let mut driver_configuration_descriptor = DriverConfigurationDescriptor::new(
-            VID,
-            PID,
-            "MMO7".to_string(),
-            icon_data,
-            3,
-            3,
-            vec![
-                "Scroll Button".to_string(),
-                "Left ActionLock".to_string(),
-                "Right ActionLock".to_string(),
-                "Forwards Button".to_string(),
-                "Back Button".to_string(),
-                "Thumb Anticlockwise".to_string(),
-                "Thumb Clockwise".to_string(),
-                "Hat Top".to_string(),
-                "Hat Left".to_string(),
-                "Hat Right".to_string(),
-                "Hat Bottom".to_string(),
-                "Button 1".to_string(),
-                "Button 2".to_string(),
-                "Precision Aim".to_string(),
-                "Button 3".to_string(),
-            ],
-        );
-        let mut timer = Timer::new(Duration::from_millis(100));
+        tokio::spawn(async move {
+            let mut driver_configuration_descriptor = DriverConfigurationDescriptor::new(
+                VID,
+                PID,
+                "MMO7".to_string(),
+                icon_data,
+                3,
+                3,
+                vec![
+                    "Scroll Button".to_string(),
+                    "Left ActionLock".to_string(),
+                    "Right ActionLock".to_string(),
+                    "Forwards Button".to_string(),
+                    "Back Button".to_string(),
+                    "Thumb Anticlockwise".to_string(),
+                    "Thumb Clockwise".to_string(),
+                    "Hat Top".to_string(),
+                    "Hat Left".to_string(),
+                    "Hat Right".to_string(),
+                    "Hat Bottom".to_string(),
+                    "Button 1".to_string(),
+                    "Button 2".to_string(),
+                    "Precision Aim".to_string(),
+                    "Button 3".to_string(),
+                ],
+            );
 
-        loop {
-            if let Ok(Some((is_running, data))) = client_dualchannel.try_recv() {
-                if is_running {
-                    if data.len() == 0 {
-                        client_dualchannel
-                            .send((true, driver_configuration_descriptor.to_bytes()))
-                            .ok();
+            loop {
+                if let Ok((is_running, data)) = client_dualchannel.recv_async().await {
+                    if is_running {
+                        if data.len() == 0 {
+                            client_dualchannel
+                                .send_async((true, driver_configuration_descriptor.to_bytes()))
+                                .await
+                                .ok();
 
-                        update_device_list(&client_dualchannel, device_list_mutex.clone());
-                    } else {
-                        match Commands::from(data) {
-                            Commands::RequestDeviceConfig(request_device_config) => {
-                                let mouses_config = mouses_config_mutex.lock_poisoned();
+                            update_device_list(&client_dualchannel, device_list_mutex.clone())
+                                .await;
+                        } else {
+                            match Commands::from(data) {
+                                Commands::RequestDeviceConfig(request_device_config) => {
+                                    let mouses_config = mouses_config_mutex.lock().await;
 
-                                if let Some(mouse_config) = mouses_config
-                                    .config
-                                    .get(&request_device_config.serial_number)
-                                {
-                                    client_dualchannel
-                                        .send((
-                                            true,
-                                            DeviceConfig::new(
-                                                request_device_config.serial_number,
-                                                mouse_config.to_config(),
-                                            )
-                                            .to_bytes(),
-                                        ))
-                                        .ok();
+                                    if let Some(mouse_config) = mouses_config
+                                        .config
+                                        .get(&request_device_config.serial_number)
+                                    {
+                                        client_dualchannel
+                                            .send_async((
+                                                true,
+                                                DeviceConfig::new(
+                                                    request_device_config.serial_number,
+                                                    mouse_config.to_config(),
+                                                )
+                                                .to_bytes(),
+                                            ))
+                                            .await
+                                            .ok();
+                                    }
                                 }
-                            }
-                            Commands::DeviceConfig(device_config) => {
-                                let mut mouses_config = mouses_config_mutex.lock_poisoned();
+                                Commands::DeviceConfig(device_config) => {
+                                    let mut mouses_config = mouses_config_mutex.lock().await;
 
-                                mouses_config.config.insert(
-                                    device_config.serial_number,
-                                    ButtonConfigs::from_config(&device_config.config),
-                                );
-                                mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
+                                    mouses_config.config.insert(
+                                        device_config.serial_number,
+                                        ButtonConfigs::from_config(&device_config.config),
+                                    );
+                                    mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
             }
+        })
+    };
 
-            if let Ok(Some(message)) = child.try_recv() {
+    tokio::spawn(async move {
+        loop {
+            if let Ok(message) = child.recv_async().await {
                 match message {
                     Message::DeviceListUpdate => {
-                        update_device_list(&client_dualchannel, device_list_mutex.clone())
+                        update_device_list(&client_dualchannel, device_list_mutex.clone()).await;
                     }
                 }
             }
-
-            timer.wait();
         }
     });
 }
 
-fn update_device_list(
+async fn update_device_list(
     client_dualchannel: &DualChannel<(bool, Vec<u8>)>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
 ) {
@@ -448,6 +465,7 @@ fn update_device_list(
     }
 
     client_dualchannel
-        .send((true, DeviceList::new(serial_number_vec).to_bytes()))
+        .send_async((true, DeviceList::new(serial_number_vec).to_bytes()))
+        .await
         .ok();
 }

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::spawn;
 use std::time::Duration;
 
@@ -11,7 +11,7 @@ use crate::{ButtonConfig, ButtonConfigs, MousesConfig};
 use enigo::{Enigo, KeyboardControllable, MouseButton, MouseControllable};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use util::config::ConfigManager;
-use util::thread::{CondMutex, MutexTrait};
+use util::thread::CondMutex;
 use util::time::Timer;
 use util::tokenizer::{tokenize, Button, Key, StateToken, Token};
 
@@ -112,7 +112,7 @@ pub struct Mapper {
     button_state: ButtonState,
     button_timer: ButtonTimer,
     button_configs_token: ButtonConfigsToken,
-    mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+    mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
     mouses_config_state_id: Arc<AtomicU32>,
     last_mouses_config_state_id: u32,
     serial_number: String,
@@ -122,12 +122,12 @@ pub struct Mapper {
 
 impl Mapper {
     pub fn new(
-        mouses_config_mutex: Arc<Mutex<ConfigManager<MousesConfig>>>,
+        mouses_config_mutex: Arc<tokio::sync::Mutex<ConfigManager<MousesConfig>>>,
         mouses_config_state_id: Arc<AtomicU32>,
         serial_number: String,
     ) -> Self {
         let last_mouses_config_state_id = mouses_config_state_id.load(Ordering::SeqCst);
-        let button_configs = mouses_config_mutex.lock_poisoned().config[&serial_number].clone();
+        let button_configs = mouses_config_mutex.blocking_lock().config[&serial_number].clone();
         let (emulation_worker_rx, emulation_worker_tx) = channel();
         let mouse_relative_movement_condmutex = Arc::new(CondMutex::new((0, 0)));
         let mouse_relative_movement_condmutex_clone = mouse_relative_movement_condmutex.clone();
@@ -218,7 +218,7 @@ impl Mapper {
     pub fn emulate(&mut self, buffer: &[u8]) {
         if self.config_has_change() {
             self.button_configs_token = ButtonConfigsToken::from_config(
-                self.mouses_config_mutex.lock_poisoned().config[&self.serial_number].clone(),
+                self.mouses_config_mutex.blocking_lock().config[&self.serial_number].clone(),
             );
         }
 
@@ -230,7 +230,7 @@ impl Mapper {
     pub fn emulate_only_mapped(&mut self, buffer: &[u8]) {
         if self.config_has_change() {
             self.button_configs_token = ButtonConfigsToken::from_config(
-                self.mouses_config_mutex.lock_poisoned().config[&self.serial_number].clone(),
+                self.mouses_config_mutex.blocking_lock().config[&self.serial_number].clone(),
             );
         }
 
