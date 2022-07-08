@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 const MAX_BUFFER_SIZE: usize = 32768;
 const MAX_PACKET_SIZE: usize = 32760;
 const PING_PACKET_DELAY: Duration = Duration::from_millis(500);
@@ -387,7 +389,6 @@ pub mod client {
 }
 
 pub use command::CommandTrait;
-use tokio::time::Instant;
 
 pub mod command {
     use serde::{Deserialize, Serialize};
