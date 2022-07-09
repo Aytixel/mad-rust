@@ -280,7 +280,7 @@ impl App {
                 *selected_device_config_option = None;
             };
 
-        if let Some(selected_device_id) = selected_device_id_option.clone() {
+        if let Some(selected_device_id) = &*selected_device_id_option {
             if let Some(driver) = driver_hashmap.get(&selected_device_id.socket_addr) {
                 if !driver
                     .device_list
