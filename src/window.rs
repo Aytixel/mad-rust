@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
 
-pub use font::Font;
+pub use font::{Font, Text};
 pub use frame_builder::FrameBuilder;
 
 use notifier::Notifier;
