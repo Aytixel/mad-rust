@@ -9,7 +9,7 @@ use std::sync::{Arc, MutexGuard};
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{
-    Event, Font, FrameBuilder, GlobalStateTrait, WindowInitTrait, WindowTrait, WindowWrapper,
+    Event, Font, FrameBuilder, GlobalStateTrait, Text, WindowInitTrait, WindowTrait, WindowWrapper,
 };
 use crate::{ConnectionEvent, DeviceId, GlobalState};
 
@@ -71,6 +71,7 @@ pub struct App {
     font_hashmap: HashMap<&'static str, Font>,
     do_exit: bool,
     over_states: HashSet<AppEvent>,
+    title_text: Text,
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
     minimize_button_color_key: PropertyBindingKey<ColorF>,
@@ -96,6 +97,8 @@ impl App {
     ) {
         self.document.unload(api, document_id);
         self.document = new_document;
+        self.title_text = self.font_hashmap["OpenSans_15px"]
+            .create_text(self.document.get_title().to_string(), None);
 
         global_state.request_redraw();
     }
@@ -305,6 +308,7 @@ impl WindowInitTrait<GlobalState> for App {
         };
         let window_size = wrapper.get_window_size();
         let mut font_hashmap = HashMap::new();
+        let document = Box::new(DeviceList::new());
 
         font_hashmap.insert(
             "OpenSans_15px",
@@ -320,6 +324,8 @@ impl WindowInitTrait<GlobalState> for App {
         );
 
         Box::new(Self {
+            title_text: font_hashmap["OpenSans_15px"]
+                .create_text(document.get_title().to_string(), None),
             font_hashmap,
             do_exit: false,
             over_states: HashSet::new(),
@@ -350,7 +356,7 @@ impl WindowInitTrait<GlobalState> for App {
             ),
             scroll_content_size: LayoutSize::zero(),
             resizing: None,
-            document: Box::new(DeviceList::new()),
+            document,
         })
     }
 }
@@ -491,7 +497,6 @@ impl WindowTrait<GlobalState> for App {
 
         // draw main window elements
         self.draw_title_bar(
-            self.document.get_title(),
             wrapper.window_size,
             frame_builder,
             clip_chain_id,

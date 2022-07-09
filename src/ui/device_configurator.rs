@@ -14,7 +14,6 @@ use webrender::api::{
 };
 use webrender::{RenderApi, Transaction};
 
-#[derive(Debug)]
 struct Mode {
     name: String,
     is_shift_mode: bool,

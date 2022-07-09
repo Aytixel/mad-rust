@@ -116,7 +116,6 @@ impl App {
 
     pub fn draw_title_bar(
         &mut self,
-        title: &'static str,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
         clip_chain_id: ClipChainId,
@@ -231,15 +230,13 @@ impl App {
         }
 
         // title
-        self.font_hashmap["OpenSans_15px"]
-            .create_text(title.to_string(), None)
-            .push_text(
-                builder,
-                frame_builder.space_and_clip,
-                LayoutPoint::new(if has_previous_document { 65.0 } else { 20.0 }, 17.0), // if has a previous document let place for the return button
-                ColorF::WHITE,
-                None,
-            );
+        self.title_text.push_text(
+            builder,
+            frame_builder.space_and_clip,
+            LayoutPoint::new(if has_previous_document { 65.0 } else { 20.0 }, 17.0), // if has a previous document let place for the return button
+            ColorF::WHITE,
+            None,
+        );
 
         // close button
         let close_button_layout_rect = LayoutRect::from_origin_and_size(
