@@ -149,26 +149,28 @@ impl App {
                             *selected_device_config_option = None;
                         }
                         AppEvent::ChooseDeviceButton => {
+                            {
+                                let device_id_vec =
+                                    wrapper.global_state.device_id_vec_mutex.lock_poisoned();
+                                let mut selected_device_id_option = wrapper
+                                    .global_state
+                                    .selected_device_id_option_mutex
+                                    .lock_poisoned();
+
+                                *selected_device_id_option =
+                                    Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
+                                wrapper.global_state.push_connection_event(
+                                    ConnectionEvent::RequestDeviceConfig(
+                                        device_id_vec[hit_items[0].tag.1 as usize].clone(),
+                                    ),
+                                );
+                            }
+
                             self.switch_document(
-                                Box::new(DeviceConfigurator::new()),
+                                Box::new(DeviceConfigurator::new(&self.font_hashmap, wrapper)),
                                 wrapper.api.clone(),
                                 wrapper.document_id,
                                 wrapper.global_state.clone(),
-                            );
-
-                            let device_id_vec =
-                                wrapper.global_state.device_id_vec_mutex.lock_poisoned();
-                            let mut selected_device_id_option = wrapper
-                                .global_state
-                                .selected_device_id_option_mutex
-                                .lock_poisoned();
-
-                            *selected_device_id_option =
-                                Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
-                            wrapper.global_state.push_connection_event(
-                                ConnectionEvent::RequestDeviceConfig(
-                                    device_id_vec[hit_items[0].tag.1 as usize].clone(),
-                                ),
                             );
                         }
                         _ => {}
@@ -433,9 +435,9 @@ impl WindowTrait<GlobalState> for App {
         );
 
         // calcultate the scroll frame content size
-        self.scroll_content_size = self
-            .document
-            .calculate_size(self.scroll_frame_size, wrapper);
+        self.scroll_content_size =
+            self.document
+                .calculate_size(self.scroll_frame_size, &self.font_hashmap, wrapper);
 
         // scroll frame / main frame
         frame_builder.builder.push_simple_stacking_context(
@@ -537,6 +539,7 @@ pub trait DocumentTrait {
     fn calculate_size(
         &mut self,
         frame_size: LayoutSize,
+        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize;
 

@@ -142,6 +142,7 @@ impl DocumentTrait for DeviceList {
     fn calculate_size(
         &mut self,
         mut frame_size: LayoutSize,
+        _font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
