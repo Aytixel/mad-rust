@@ -346,7 +346,7 @@ impl DocumentTrait for DeviceList {
                     builder,
                     space_and_clip,
                     device_button_layout_point + LayoutSize::new(7.5, 7.5),
-                    ColorF::new_u(255, 255, 255, 200),
+                    ColorF::WHITE,
                     None,
                 );
             font_hashmap["OpenSans_10px"]
@@ -363,7 +363,7 @@ impl DocumentTrait for DeviceList {
                     builder,
                     space_and_clip,
                     device_button_layout_point + LayoutSize::new(7.5, 130.0),
-                    ColorF::new_u(255, 255, 255, 100),
+                    ColorF::WHITE,
                     None,
                 );
             builder.pop_stacking_context();

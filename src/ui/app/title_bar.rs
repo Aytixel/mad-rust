@@ -237,7 +237,7 @@ impl App {
                 builder,
                 frame_builder.space_and_clip,
                 LayoutPoint::new(if has_previous_document { 65.0 } else { 20.0 }, 17.0), // if has a previous document let place for the return button
-                ColorF::new_u(255, 255, 255, 200),
+                ColorF::WHITE,
                 None,
             );
 
