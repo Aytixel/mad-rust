@@ -285,8 +285,11 @@ impl App {
                 *selected_device_config_option = None;
             };
 
+        // switch back to device list document if
         if let Some(selected_device_id) = &*selected_device_id_option {
+            // driver disconnected
             if let Some(driver) = driver_hashmap.get(&selected_device_id.socket_addr) {
+                // or device disconnected from the driver
                 if !driver
                     .device_list
                     .serial_number_vec
