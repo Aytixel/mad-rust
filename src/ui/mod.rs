@@ -418,7 +418,7 @@ impl WindowTrait<GlobalState> for App {
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
         self.update_app_state(wrapper);
         self.animate_title_bar(txn);
-        self.document.animate(txn, wrapper);
+        self.document.animate(&self.font_hashmap, txn, wrapper);
     }
 
     fn redraw(
@@ -542,7 +542,12 @@ impl WindowTrait<GlobalState> for App {
 pub trait DocumentTrait {
     fn get_title(&self) -> &'static str;
 
-    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>);
+    fn animate(
+        &mut self,
+        font_hashmap: &HashMap<&'static str, Font>,
+        txn: &mut Transaction,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    );
 
     fn calculate_size(
         &mut self,

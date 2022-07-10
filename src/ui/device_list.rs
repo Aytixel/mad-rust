@@ -91,7 +91,12 @@ impl DocumentTrait for DeviceList {
         "Device List"
     }
 
-    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
+    fn animate(
+        &mut self,
+        _font_hashmap: &HashMap<&'static str, Font>,
+        txn: &mut Transaction,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let mut floats = vec![];
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();

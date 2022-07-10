@@ -15,7 +15,7 @@ use webrender::api::{
 use webrender::{RenderApi, Transaction};
 
 struct Mode {
-    name: String,
+    name: Text,
     is_shift_mode: bool,
     mode: u8,
 }
@@ -58,7 +58,12 @@ impl DocumentTrait for DeviceConfigurator {
         "Device Configuration"
     }
 
-    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
+    fn animate(
+        &mut self,
+        font_hashmap: &HashMap<&'static str, Font>,
+        txn: &mut Transaction,
+        wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
         // add mode to the vec
         if self.mode_vec.is_empty() {
             if let Some(device_config) = &*wrapper
@@ -69,7 +74,8 @@ impl DocumentTrait for DeviceConfigurator {
                 // mode
                 for i in 0..device_config.config[0][0].len() {
                     self.mode_vec.push(Mode {
-                        name: format!("Mode {}", i + 1),
+                        name: font_hashmap["OpenSans_13px"]
+                            .create_text(format!("Mode {}", i + 1), None),
                         is_shift_mode: false,
                         mode: i as u8,
                     });
@@ -78,7 +84,8 @@ impl DocumentTrait for DeviceConfigurator {
                 // shift mode
                 for i in 0..device_config.config[0][1].len() {
                     self.mode_vec.push(Mode {
-                        name: format!("Shift mode {}", i + 1),
+                        name: font_hashmap["OpenSans_13px"]
+                            .create_text(format!("Shift mode {}", i + 1), None),
                         is_shift_mode: true,
                         mode: i as u8,
                     });
