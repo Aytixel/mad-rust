@@ -64,13 +64,13 @@ impl App {
         }
         if new_over_state.contains(&AppEvent::ReturnButton) {
             self.return_button_color_animation.to(
-                ColorF::new_u(33, 33, 33, 0),
+                ColorF::new_u(33, 33, 33, 100),
                 Duration::from_millis(100),
                 AnimationCurve::EASE_OUT,
             );
         } else {
             self.return_button_color_animation.to(
-                ColorF::new_u(33, 33, 33, 100),
+                ColorF::new_u(33, 33, 33, 0),
                 Duration::from_millis(100),
                 AnimationCurve::EASE_IN,
             );
