@@ -5,6 +5,7 @@ mod device_list;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, MutexGuard};
+use std::time::Duration;
 
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
@@ -18,6 +19,7 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 use util::connection::command::DeviceConfig;
 use util::thread::MutexTrait;
+use util::time::Timer;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
     APZScrollGeneration, ClipChainId, ColorF, CommonItemProperties, DocumentId, ExternalScrollId,
@@ -85,6 +87,7 @@ pub struct App {
     scroll_content_size: LayoutSize,
     resizing: Option<AppEvent>,
     document: Box<dyn DocumentTrait>,
+    update_app_state_timer: Timer,
 }
 
 impl App {
@@ -260,6 +263,8 @@ impl App {
     }
 
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
+        self.document.update_app_state(&self.font_hashmap, wrapper);
+
         // switch back to device list when the device disconnect
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let selected_device_id_option = wrapper
@@ -360,6 +365,7 @@ impl WindowInitTrait<GlobalState> for App {
             scroll_content_size: LayoutSize::zero(),
             resizing: None,
             document,
+            update_app_state_timer: Timer::new(Duration::from_millis(100)),
         })
     }
 }
@@ -416,9 +422,12 @@ impl WindowTrait<GlobalState> for App {
     }
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
-        self.update_app_state(wrapper);
+        if self.update_app_state_timer.check() {
+            self.update_app_state(wrapper);
+        }
+
         self.animate_title_bar(txn);
-        self.document.animate(&self.font_hashmap, txn, wrapper);
+        self.document.animate(txn, wrapper);
     }
 
     fn redraw(
@@ -542,12 +551,14 @@ impl WindowTrait<GlobalState> for App {
 pub trait DocumentTrait {
     fn get_title(&self) -> &'static str;
 
-    fn animate(
+    fn update_app_state(
         &mut self,
-        font_hashmap: &HashMap<&'static str, Font>,
-        txn: &mut Transaction,
-        wrapper: &mut WindowWrapper<GlobalState>,
-    );
+        _font_hashmap: &HashMap<&'static str, Font>,
+        _wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
+    }
+
+    fn animate(&mut self, _txn: &mut Transaction, _wrapper: &mut WindowWrapper<GlobalState>) {}
 
     fn calculate_size(
         &mut self,
@@ -566,5 +577,5 @@ pub trait DocumentTrait {
         wrapper: &mut WindowWrapper<GlobalState>,
     );
 
-    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId);
+    fn unload(&mut self, _api: Rc<RefCell<RenderApi>>, _document_id: DocumentId) {}
 }

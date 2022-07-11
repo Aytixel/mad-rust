@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::animation::Animation;
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
@@ -14,11 +12,10 @@ use webrender::api::units::{
 };
 use webrender::api::{
     BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipChainId, ClipMode, ColorF,
-    CommonItemProperties, DocumentId, NormalBorder, PropertyBinding, PropertyBindingKey,
-    ReferenceFrameKind, SpaceAndClipInfo, SpatialTreeItemKey, TransformStyle,
+    CommonItemProperties, NormalBorder, PropertyBinding, PropertyBindingKey, ReferenceFrameKind,
+    SpaceAndClipInfo, SpatialTreeItemKey, TransformStyle,
 };
 use webrender::euclid::Angle;
-use webrender::{RenderApi, Transaction};
 
 struct Mode {
     name: Text,
@@ -89,10 +86,9 @@ impl DocumentTrait for DeviceConfigurator {
         "Device Configuration"
     }
 
-    fn animate(
+    fn update_app_state(
         &mut self,
         font_hashmap: &HashMap<&'static str, Font>,
-        txn: &mut Transaction,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         // add mode to the vec
@@ -320,6 +316,4 @@ impl DocumentTrait for DeviceConfigurator {
             builder.pop_reference_frame();
         }
     }
-
-    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId) {}
 }

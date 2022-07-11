@@ -74,6 +74,7 @@ pub struct DeviceList {
     device_data_vec: Vec<DeviceData>,
     device_icon_option_hashmap: HashMap<SocketAddr, Option<Rc<DeviceIcon>>>,
     image_id: u32,
+    device_icon_to_keep_hashset_option: Option<HashSet<SocketAddr>>,
 }
 
 impl DeviceList {
@@ -82,6 +83,7 @@ impl DeviceList {
             device_data_vec: Vec::new(),
             device_icon_option_hashmap: HashMap::new(),
             image_id: 0,
+            device_icon_to_keep_hashset_option: None,
         }
     }
 }
@@ -91,28 +93,16 @@ impl DocumentTrait for DeviceList {
         "Device List"
     }
 
-    fn animate(
+    fn update_app_state(
         &mut self,
         _font_hashmap: &HashMap<&'static str, Font>,
-        txn: &mut Transaction,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
-        let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
-        let mut floats = vec![];
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();
         let mut device_icon_to_keep_hashset = HashSet::new();
 
         for mut device_data in drained_device_data_vec {
-            let has_update = device_data.animation.update();
-
-            if has_update {
-                floats.push(PropertyValue {
-                    key: device_data.property_key,
-                    value: device_data.animation.value,
-                });
-            }
-
-            if has_update || !device_data.to_remove {
+            if device_data.animation.update() || !device_data.to_remove {
                 device_icon_to_keep_hashset.insert(device_data.device_id.socket_addr);
 
                 // keep the device if animation not ended or not to remove
@@ -122,16 +112,18 @@ impl DocumentTrait for DeviceList {
             }
         }
 
-        // remove unused icon
-        for socket_addr in self.device_icon_option_hashmap.clone().keys() {
-            if !device_icon_to_keep_hashset.contains(socket_addr)
-                && !driver_hashmap.contains_key(socket_addr)
-            {
-                if let Some(device_icon) = self.device_icon_option_hashmap[socket_addr].clone() {
-                    txn.delete_image(device_icon.image_key);
-                }
+        self.device_icon_to_keep_hashset_option = Some(device_icon_to_keep_hashset);
+    }
 
-                self.device_icon_option_hashmap.remove(socket_addr);
+    fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
+        let mut floats = vec![];
+
+        for device_data in self.device_data_vec.iter_mut() {
+            if device_data.animation.update() {
+                floats.push(PropertyValue {
+                    key: device_data.property_key,
+                    value: device_data.animation.value,
+                });
             }
         }
 
@@ -141,6 +133,23 @@ impl DocumentTrait for DeviceList {
                 floats,
                 colors: vec![],
             });
+        }
+        if let Some(device_icon_to_keep_hashset) = self.device_icon_to_keep_hashset_option.take() {
+            let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
+
+            // remove unused icon
+            for socket_addr in self.device_icon_option_hashmap.clone().keys() {
+                if !device_icon_to_keep_hashset.contains(socket_addr)
+                    && !driver_hashmap.contains_key(socket_addr)
+                {
+                    if let Some(device_icon) = self.device_icon_option_hashmap[socket_addr].clone()
+                    {
+                        txn.delete_image(device_icon.image_key);
+                    }
+
+                    self.device_icon_option_hashmap.remove(socket_addr);
+                }
+            }
         }
     }
 
