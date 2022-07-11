@@ -193,10 +193,7 @@ impl App {
                 },
                 SpatialTreeItemKey::new(1, 0),
             );
-            let return_border_layout_rect = LayoutRect::from_origin_and_size(
-                LayoutPoint::new(0.0, 0.0),
-                LayoutSize::new(10.0, 10.0),
-            );
+            let return_border_layout_rect = LayoutRect::from_size(LayoutSize::splat(10.0));
             let return_border_common_item_properties = &CommonItemProperties::new(
                 return_border_layout_rect,
                 SpaceAndClipInfo {
