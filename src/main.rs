@@ -8,11 +8,12 @@ mod window;
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
 use connection::Connection;
-use ui::App;
+use ui::{App, DocumentTrait};
 
 use hashbrown::HashMap;
 use util::connection::command::DeviceConfig;
@@ -21,7 +22,7 @@ use util::{
     connection::command::{DeviceList, DriverConfigurationDescriptor},
     thread::kill_double,
 };
-use window::{GlobalStateTrait, Window, WindowOptions};
+use window::{Font, GlobalStateTrait, Window, WindowOptions};
 #[cfg(target_os = "windows")]
 use window_vibrancy::apply_blur;
 #[cfg(target_os = "macos")]
@@ -62,23 +63,27 @@ enum ConnectionEvent {
 }
 
 pub struct GlobalState {
+    font_hashmap_mutex: Mutex<HashMap<&'static str, Font>>,
     do_redraw: AtomicBool,
     driver_hashmap_mutex: Mutex<HashMap<SocketAddr, Driver>>,
     device_id_vec_mutex: Mutex<Vec<DeviceId>>,
     selected_device_id_option_mutex: Mutex<Option<DeviceId>>,
     selected_device_config_option_mutex: Mutex<Option<DeviceConfig>>,
     connection_event_queue_mutex: Mutex<VecDeque<ConnectionEvent>>,
+    new_document_option_mutex: Mutex<Option<Box<dyn DocumentTrait + Send>>>,
 }
 
 impl GlobalState {
     fn new() -> Arc<Self> {
         Arc::new(Self {
+            font_hashmap_mutex: Mutex::new(HashMap::new()),
             do_redraw: AtomicBool::new(true),
             driver_hashmap_mutex: Mutex::new(HashMap::new()),
             device_id_vec_mutex: Mutex::new(vec![]),
             selected_device_id_option_mutex: Mutex::new(None),
             selected_device_config_option_mutex: Mutex::new(None),
             connection_event_queue_mutex: Mutex::new(VecDeque::new()),
+            new_document_option_mutex: Mutex::new(None),
         })
     }
 

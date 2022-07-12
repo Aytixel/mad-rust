@@ -1,6 +1,6 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
+use util::thread::MutexTrait;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     ColorF, CommonItemProperties, DisplayListBuilder, DocumentId, FontInstanceKey, FontKey,
@@ -12,7 +12,7 @@ pub struct Font {
     pub instance_key: FontInstanceKey,
     pub key: FontKey,
     pub size: Au,
-    api: Rc<RefCell<RenderApi>>,
+    api_mutex: Arc<Mutex<RenderApi>>,
     document_id: DocumentId,
 }
 
@@ -20,49 +20,51 @@ impl Font {
     pub fn new(
         font_key: FontKey,
         font_size: Au,
-        api: Rc<RefCell<RenderApi>>,
+        api_mutex: Arc<Mutex<RenderApi>>,
         document_id: DocumentId,
     ) -> Self {
-        let font_instance_key = api.borrow().generate_font_instance_key();
-        let mut txn = Transaction::new();
+        let font_instance_key = {
+            let mut api = api_mutex.lock_poisoned();
+            let font_instance_key = api.generate_font_instance_key();
+            let mut txn = Transaction::new();
 
-        txn.add_font_instance(
-            font_instance_key,
-            font_key,
-            font_size.to_f32_px(),
-            None,
-            None,
-            Vec::new(),
-        );
-        api.borrow_mut().send_transaction(document_id, txn);
+            txn.add_font_instance(
+                font_instance_key,
+                font_key,
+                font_size.to_f32_px(),
+                None,
+                None,
+                Vec::new(),
+            );
+            api.send_transaction(document_id, txn);
+
+            font_instance_key
+        };
 
         Self {
             instance_key: font_instance_key,
             key: font_key,
             size: font_size,
-            api,
+            api_mutex,
             document_id,
         }
     }
 
     pub fn create_text(&self, text: String, tab_size_option: Option<f32>) -> Text {
+        let api = self.api_mutex.lock_poisoned();
         let char_vec: Vec<char> = text.chars().collect();
         let tab_size = if let Some(tab_size) = tab_size_option {
             tab_size
         } else {
             4.0
         };
-        let glyph_indices: Vec<u32> = self
-            .api
-            .borrow()
+        let glyph_indices: Vec<u32> = api
             .get_glyph_indices(self.key, text.as_str())
             .into_iter()
             .flatten()
             .collect();
-        let glyph_dimension_options = self
-            .api
-            .borrow()
-            .get_glyph_dimensions(self.instance_key, glyph_indices.clone());
+        let glyph_dimension_options =
+            api.get_glyph_dimensions(self.instance_key, glyph_indices.clone());
         let mut glyph_size = LayoutSize::new(0.0, self.size.to_f32_px());
         let mut char_width_mean = 0.0;
         let mut char_width_count = 0;
@@ -97,8 +99,6 @@ impl Font {
             }
         }
 
-        // glyph_position += LayoutSize::new(0.0, self.size.to_f32_px());
-
         // add extra height on the last line for letters like "g" which goes further down
         if self.size.to_f32_px() != max_line_height {
             glyph_size += LayoutSize::new(0.0, max_line_height - self.size.to_f32_px())
@@ -121,8 +121,8 @@ impl Font {
 
         txn.delete_font_instance(self.instance_key);
 
-        self.api
-            .borrow_mut()
+        self.api_mutex
+            .lock_poisoned()
             .send_transaction(self.document_id, txn);
     }
 }

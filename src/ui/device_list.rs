@@ -1,14 +1,14 @@
-use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::vec;
 
 use crate::animation::{Animation, AnimationCurve};
 use crate::ui::DocumentTrait;
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
-use crate::window::{Font, FrameBuilder, GlobalStateTrait, WindowWrapper};
-use crate::{DeviceId, GlobalState};
+use crate::window::{FrameBuilder, GlobalStateTrait, WindowWrapper};
+use crate::{ConnectionEvent, DeviceId, GlobalState};
 
 use hashbrown::{HashMap, HashSet};
 use image::imageops::{resize, FilterType};
@@ -17,13 +17,14 @@ use util::thread::MutexTrait;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
     AlphaType, BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties, DocumentId,
-    DynamicProperties, FilterOp, IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags,
-    ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey,
-    PropertyValue, SpaceAndClipInfo,
+    DynamicProperties, FilterOp, HitTestItem, IdNamespace, ImageData, ImageDescriptor,
+    ImageDescriptorFlags, ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding,
+    PropertyBindingKey, PropertyValue, SpaceAndClipInfo,
 };
 use webrender::{RenderApi, Transaction};
 
-use super::AppEvent;
+use super::device_configurator::DeviceConfigurator;
+use super::{AppEvent, AppEventType};
 
 pub struct DeviceIcon {
     image_key: ImageKey,
@@ -93,11 +94,48 @@ impl DocumentTrait for DeviceList {
         "Device List"
     }
 
-    fn update_app_state(
+    fn calculate_event(
         &mut self,
-        _font_hashmap: &HashMap<&'static str, Font>,
+        hit_items: &Vec<HitTestItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
+        target_event_type: AppEventType,
     ) {
+        if !hit_items.is_empty() {
+            if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
+                match target_event_type {
+                    AppEventType::MouseReleased => match event {
+                        AppEvent::ChooseDeviceButton => {
+                            {
+                                let device_id_vec =
+                                    wrapper.global_state.device_id_vec_mutex.lock_poisoned();
+                                let mut selected_device_id_option = wrapper
+                                    .global_state
+                                    .selected_device_id_option_mutex
+                                    .lock_poisoned();
+
+                                *selected_device_id_option =
+                                    Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
+                                wrapper.global_state.push_connection_event(
+                                    ConnectionEvent::RequestDeviceConfig(
+                                        device_id_vec[hit_items[0].tag.1 as usize].clone(),
+                                    ),
+                                );
+                            }
+
+                            *wrapper
+                                .global_state
+                                .new_document_option_mutex
+                                .lock_poisoned() = Some(Box::new(DeviceConfigurator::new(wrapper)));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();
         let mut device_icon_to_keep_hashset = HashSet::new();
 
@@ -156,7 +194,6 @@ impl DocumentTrait for DeviceList {
     fn calculate_size(
         &mut self,
         mut frame_size: LayoutSize,
-        _font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
@@ -202,8 +239,8 @@ impl DocumentTrait for DeviceList {
 
                             txn.add_image(image_key, image_descriptor, image_data, None);
                             wrapper
-                                .api
-                                .borrow_mut()
+                                .api_mutex
+                                .lock_poisoned()
                                 .send_transaction(wrapper.document_id, txn);
 
                             Some(Rc::new(DeviceIcon::new(image_key, width, height)))
@@ -239,7 +276,10 @@ impl DocumentTrait for DeviceList {
                         driver.driver_configuration_descriptor.device_name.clone(),
                         self.device_icon_option_hashmap[socket_addr].clone(),
                         animation,
-                        wrapper.api.borrow().generate_property_binding_key(),
+                        wrapper
+                            .api_mutex
+                            .lock_poisoned()
+                            .generate_property_binding_key(),
                     ));
                 }
 
@@ -276,7 +316,6 @@ impl DocumentTrait for DeviceList {
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
         clip_chain_id: ClipChainId,
-        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
@@ -348,6 +387,8 @@ impl DocumentTrait for DeviceList {
                 );
             }
 
+            let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+
             font_hashmap["OpenSans_13px"]
                 .create_text(
                     device_data
@@ -394,14 +435,14 @@ impl DocumentTrait for DeviceList {
         }
     }
 
-    fn unload(&mut self, api: Rc<RefCell<RenderApi>>, document_id: DocumentId) {
+    fn unload(&mut self, api_mutex: Arc<Mutex<RenderApi>>, document_id: DocumentId) {
         for device_icon_option in self.device_icon_option_hashmap.values() {
             // unload image
             if let Some(device_icon) = device_icon_option {
                 let mut txn = Transaction::new();
 
                 txn.delete_image(device_icon.image_key);
-                api.borrow_mut().send_transaction(document_id, txn);
+                api_mutex.lock_poisoned().send_transaction(document_id, txn);
             }
         }
     }

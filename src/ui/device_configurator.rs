@@ -1,19 +1,22 @@
-use crate::animation::Animation;
+use std::time::Duration;
+
+use crate::animation::{Animation, AnimationCurve};
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
-use crate::window::{Font, FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
+use crate::window::{FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
 use crate::GlobalState;
 
-use super::DocumentTrait;
+use super::{AppEvent, AppEventType, DocumentTrait};
 
-use hashbrown::HashMap;
+use hashbrown::HashSet;
 use util::thread::MutexTrait;
 use webrender::api::units::{
     LayoutPoint, LayoutRect, LayoutSideOffsets, LayoutSize, LayoutTransform,
 };
 use webrender::api::{
     BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipChainId, ClipMode, ColorF,
-    CommonItemProperties, NormalBorder, PropertyBinding, PropertyBindingKey, ReferenceFrameKind,
-    SpaceAndClipInfo, SpatialTreeItemKey, TransformStyle,
+    CommonItemProperties, DynamicProperties, HitTestItem, NormalBorder, PrimitiveFlags,
+    PropertyBinding, PropertyBindingKey, PropertyValue, ReferenceFrameKind, SpaceAndClipInfo,
+    SpatialTreeItemKey, TransformStyle,
 };
 use webrender::euclid::Angle;
 
@@ -34,10 +37,7 @@ pub struct DeviceConfigurator {
 }
 
 impl DeviceConfigurator {
-    pub fn new(
-        font_hashmap: &HashMap<&'static str, Font>,
-        wrapper: &mut WindowWrapper<GlobalState>,
-    ) -> Self {
+    pub fn new(wrapper: &mut WindowWrapper<GlobalState>) -> Self {
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
         let selected_device_id_option = wrapper
             .global_state
@@ -47,28 +47,32 @@ impl DeviceConfigurator {
         let over_color_animation = |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
             value.a = (to.a - from.a) * coef as f32 + from.a
         };
+        let (mode_selector_previous_button_color_key, mode_selector_next_button_color_key) = {
+            let api = wrapper.api_mutex.lock_poisoned();
+
+            (
+                api.generate_property_binding_key(),
+                api.generate_property_binding_key(),
+            )
+        };
 
         Self {
             mode_vec: vec![],
             current_mode: 0,
-            device_info_text: font_hashmap["OpenSans_13px"].create_text(
-                format!(
-                    "Selected device : {} | {} n°",
-                    driver_hashmap[&selected_device_id.socket_addr]
-                        .driver_configuration_descriptor
-                        .device_name,
-                    selected_device_id.serial_number
+            device_info_text: wrapper.global_state.font_hashmap_mutex.lock_poisoned()
+                ["OpenSans_13px"]
+                .create_text(
+                    format!(
+                        "Selected device : {} | {} n°",
+                        driver_hashmap[&selected_device_id.socket_addr]
+                            .driver_configuration_descriptor
+                            .device_name,
+                        selected_device_id.serial_number
+                    ),
+                    None,
                 ),
-                None,
-            ),
-            mode_selector_previous_button_color_key: wrapper
-                .api
-                .borrow()
-                .generate_property_binding_key(),
-            mode_selector_next_button_color_key: wrapper
-                .api
-                .borrow()
-                .generate_property_binding_key(),
+            mode_selector_previous_button_color_key,
+            mode_selector_next_button_color_key,
             mode_selector_previous_button_color_animation: Animation::new(
                 ColorF::new_u(33, 33, 33, 0),
                 over_color_animation,
@@ -86,11 +90,72 @@ impl DocumentTrait for DeviceConfigurator {
         "Device Configuration"
     }
 
-    fn update_app_state(
+    fn calculate_event(
         &mut self,
-        font_hashmap: &HashMap<&'static str, Font>,
+        hit_items: &Vec<HitTestItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
+        target_event_type: AppEventType,
     ) {
+        if !hit_items.is_empty() {
+            if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
+                match target_event_type {
+                    AppEventType::MouseReleased => match event {
+                        AppEvent::ModeSelectorPrevious => {
+                            if self.current_mode == 0 {
+                                self.current_mode = self.mode_vec.len() - 1;
+                            } else {
+                                self.current_mode -= 1;
+                            }
+
+                            wrapper.global_state.request_redraw();
+                        }
+                        AppEvent::ModeSelectorNext => {
+                            if self.current_mode == self.mode_vec.len() - 1 {
+                                self.current_mode = 0;
+                            } else {
+                                self.current_mode += 1;
+                            }
+
+                            wrapper.global_state.request_redraw();
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn update_over_state(&mut self, new_over_state: &HashSet<AppEvent>) {
+        if new_over_state.contains(&AppEvent::ModeSelectorPrevious) {
+            self.mode_selector_previous_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 100),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_OUT,
+            );
+        } else {
+            self.mode_selector_previous_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 0),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_IN,
+            );
+        }
+        if new_over_state.contains(&AppEvent::ModeSelectorNext) {
+            self.mode_selector_next_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 100),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_OUT,
+            );
+        } else {
+            self.mode_selector_next_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 0),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_IN,
+            );
+        }
+    }
+
+    fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         // add mode to the vec
         if self.mode_vec.is_empty() {
             if let Some(device_config) = &*wrapper
@@ -98,6 +163,8 @@ impl DocumentTrait for DeviceConfigurator {
                 .selected_device_config_option_mutex
                 .lock_poisoned()
             {
+                let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+
                 // mode
                 for i in 0..device_config.config[0][0].len() {
                     self.mode_vec.push(Mode {
@@ -123,18 +190,44 @@ impl DocumentTrait for DeviceConfigurator {
         }
     }
 
+    fn animate(
+        &mut self,
+        txn: &mut webrender::Transaction,
+        _wrapper: &mut WindowWrapper<GlobalState>,
+    ) {
+        let mut colors = vec![];
+
+        if self.mode_selector_previous_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.mode_selector_previous_button_color_key,
+                value: self.mode_selector_previous_button_color_animation.value,
+            });
+        }
+        if self.mode_selector_next_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.mode_selector_next_button_color_key,
+                value: self.mode_selector_next_button_color_animation.value,
+            });
+        }
+
+        if !colors.is_empty() {
+            txn.append_dynamic_properties(DynamicProperties {
+                transforms: vec![],
+                floats: vec![],
+                colors,
+            });
+        }
+    }
+
     fn calculate_size(
         &mut self,
         frame_size: LayoutSize,
-        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let mut size = LayoutSize::new(self.device_info_text.size.width + 20.0, 25.0);
 
         if !self.mode_vec.is_empty() {
-            let current_mode = &self.mode_vec[self.current_mode];
-
-            size += LayoutSize::new(10.0 + current_mode.name.size.width + 20.0 + 70.0, 25.0);
+            size += LayoutSize::new(210.0, 25.0);
         }
 
         size
@@ -146,7 +239,6 @@ impl DocumentTrait for DeviceConfigurator {
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
         clip_chain_id: ClipChainId,
-        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
@@ -179,7 +271,7 @@ impl DocumentTrait for DeviceConfigurator {
             // mode selector
             let mode_selector_layout_rect = LayoutRect::from_origin_and_size(
                 LayoutPoint::new(device_info_layout_rect.width() + 10.0, 0.0),
-                LayoutSize::new(current_mode.name.size.width + 20.0 + 70.0, 25.0),
+                LayoutSize::new(200.0, 25.0),
             );
             let mode_selector_common_item_properties =
                 &CommonItemProperties::new(mode_selector_layout_rect, space_and_clip);
@@ -207,8 +299,9 @@ impl DocumentTrait for DeviceConfigurator {
             );
             let mode_selector_previous_button_common_item_properties = &CommonItemProperties::new(
                 mode_selector_previous_button_layout_rect,
-                frame_builder.space_and_clip,
+                space_and_clip,
             );
+
             builder.push_rounded_rect_with_animation(
                 &mode_selector_previous_button_common_item_properties,
                 PropertyBinding::Binding(
@@ -218,16 +311,22 @@ impl DocumentTrait for DeviceConfigurator {
                 BorderRadius::uniform(3.0),
                 ClipMode::Clip,
             );
+            builder.push_hit_test(
+                mode_selector_previous_button_layout_rect,
+                clip_chain_id,
+                space_and_clip.spatial_id,
+                PrimitiveFlags::empty(),
+                (AppEvent::ModeSelectorPrevious.into(), 0),
+            );
 
             // mode selector next
             let mode_selector_next_button_layout_rect = LayoutRect::from_origin_and_size(
                 LayoutPoint::new(mode_selector_layout_rect.x_range().end - 35.0, 0.0),
                 LayoutSize::new(35.0, 25.0),
             );
-            let mode_selector_next_button_common_item_properties = &CommonItemProperties::new(
-                mode_selector_next_button_layout_rect,
-                frame_builder.space_and_clip,
-            );
+            let mode_selector_next_button_common_item_properties =
+                &CommonItemProperties::new(mode_selector_next_button_layout_rect, space_and_clip);
+
             builder.push_rounded_rect_with_animation(
                 &mode_selector_next_button_common_item_properties,
                 PropertyBinding::Binding(
@@ -237,11 +336,18 @@ impl DocumentTrait for DeviceConfigurator {
                 BorderRadius::uniform(3.0),
                 ClipMode::Clip,
             );
+            builder.push_hit_test(
+                mode_selector_next_button_layout_rect,
+                clip_chain_id,
+                space_and_clip.spatial_id,
+                PrimitiveFlags::empty(),
+                (AppEvent::ModeSelectorNext.into(), 0),
+            );
 
             // mode selector arrows
             let spatial_id = builder.push_reference_frame(
-                LayoutPoint::new(mode_selector_layout_rect.x_range().start + 12.0, 12.5),
-                frame_builder.space_and_clip.spatial_id,
+                LayoutPoint::new(mode_selector_layout_rect.x_range().start, 12.5),
+                space_and_clip.spatial_id,
                 TransformStyle::Flat,
                 PropertyBinding::Value(LayoutTransform::rotation(
                     0.0,
@@ -265,12 +371,12 @@ impl DocumentTrait for DeviceConfigurator {
                 style: BorderStyle::Solid,
             };
             let mode_selector_left_arrow_layout_rect =
-                LayoutRect::from_size(LayoutSize::splat(10.0));
+                LayoutRect::from_origin_and_size(LayoutPoint::splat(8.5), LayoutSize::splat(10.0));
             let mode_selector_left_arrow_common_item_properties = &CommonItemProperties::new(
                 mode_selector_left_arrow_layout_rect,
                 SpaceAndClipInfo {
                     spatial_id,
-                    clip_id: frame_builder.space_and_clip.clip_id,
+                    clip_id: space_and_clip.clip_id,
                 },
             );
 
@@ -289,14 +395,14 @@ impl DocumentTrait for DeviceConfigurator {
             );
 
             let mode_selector_right_arrow_layout_rect = LayoutRect::from_origin_and_size(
-                LayoutPoint::splat(current_mode.name.size.width + 21.5),
+                LayoutPoint::splat(123.0),
                 LayoutSize::splat(10.0),
             );
             let mode_selector_right_arrow_common_item_properties = &CommonItemProperties::new(
                 mode_selector_right_arrow_layout_rect,
                 SpaceAndClipInfo {
                     spatial_id,
-                    clip_id: frame_builder.space_and_clip.clip_id,
+                    clip_id: space_and_clip.clip_id,
                 },
             );
 

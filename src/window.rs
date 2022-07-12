@@ -4,9 +4,8 @@ mod font;
 mod frame_builder;
 mod notifier;
 
-use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::vec;
 
@@ -19,6 +18,7 @@ use gleam::gl;
 use glutin::{Api, ContextBuilder, GlRequest, PossiblyCurrent, WindowedContext};
 use hashbrown::HashMap;
 use image::load_from_memory;
+use util::thread::MutexTrait;
 use util::time::Timer;
 use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, WorldPoint};
 use webrender::api::{ColorF, DocumentId, Epoch, FontKey, HitTestItem, PipelineId, RenderReasons};
@@ -92,7 +92,7 @@ pub struct WindowWrapper<T: GlobalStateTrait> {
     pub pipeline_id: PipelineId,
     pub document_id: DocumentId,
     epoch: Epoch,
-    pub api: Rc<RefCell<RenderApi>>,
+    pub api_mutex: Arc<Mutex<RenderApi>>,
     pub global_state: Arc<T>,
     font_key_hashmap: HashMap<&'static str, FontKey>,
     pub window_size: PhysicalSize<u32>,
@@ -129,7 +129,7 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
             pipeline_id,
             document_id,
             epoch,
-            api: Rc::new(RefCell::new(api)),
+            api_mutex: Arc::new(Mutex::new(api)),
             font_key_hashmap,
             global_state,
             window_size,
@@ -145,8 +145,8 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
             DeviceIntPoint::new(size.width as i32, size.height as i32),
         ));
 
-        self.api
-            .borrow_mut()
+        self.api_mutex
+            .lock_poisoned()
             .send_transaction(self.document_id, txn);
         self.context.resize(size);
     }
@@ -188,8 +188,8 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
     fn do_hit_test(&self) -> Vec<HitTestItem> {
         match self.mouse_position {
             Some(mouse_position) => {
-                self.api
-                    .borrow()
+                self.api_mutex
+                    .lock_poisoned()
                     .hit_test(
                         self.document_id,
                         WorldPoint::new(mouse_position.x as f32, mouse_position.y as f32),
@@ -228,30 +228,29 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
                 },
             );
 
-            self.api
-                .borrow_mut()
+            self.api_mutex
+                .lock_poisoned()
                 .send_transaction(self.document_id, txn);
         }
     }
 
     pub fn load_font_file(&mut self, name: &'static str, data: &'static [u8]) {
+        let mut api = self.api_mutex.lock_poisoned();
         let mut txn = Transaction::new();
 
-        let font_key = self.api.borrow().generate_font_key();
+        let font_key = api.generate_font_key();
         txn.add_raw_font(font_key, data.to_vec(), 0);
 
         self.font_key_hashmap.insert(name, font_key);
 
-        self.api
-            .borrow_mut()
-            .send_transaction(self.document_id, txn);
+        api.send_transaction(self.document_id, txn);
     }
 
     pub fn load_font(&mut self, name: &'static str, font_size: Au) -> Font {
         Font::new(
             self.font_key_hashmap[&name].clone(),
             font_size,
-            self.api.clone(),
+            self.api_mutex.clone(),
             self.document_id,
         )
     }
@@ -263,8 +262,8 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
             txn.delete_font(*font_key);
         }
 
-        self.api
-            .borrow_mut()
+        self.api_mutex
+            .lock_poisoned()
             .send_transaction(self.document_id, txn);
     }
 }

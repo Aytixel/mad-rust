@@ -2,17 +2,15 @@ mod app;
 mod device_configurator;
 mod device_list;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::{Arc, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::animation::Animation;
 use crate::window::ext::ColorFTrait;
 use crate::window::{
-    Event, Font, FrameBuilder, GlobalStateTrait, Text, WindowInitTrait, WindowTrait, WindowWrapper,
+    Event, FrameBuilder, GlobalStateTrait, Text, WindowInitTrait, WindowTrait, WindowWrapper,
 };
-use crate::{ConnectionEvent, DeviceId, GlobalState};
+use crate::{DeviceId, GlobalState};
 
 use hashbrown::{HashMap, HashSet};
 use num::FromPrimitive;
@@ -30,12 +28,11 @@ use webrender::{RenderApi, Transaction};
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
-use self::device_configurator::DeviceConfigurator;
 use self::device_list::DeviceList;
 
 const EXT_SCROLL_ID_ROOT: u64 = 0;
 
-#[derive(Clone, PartialEq, Eq, Hash, FromPrimitive, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, Debug)]
 pub enum AppEvent {
     Scroll,
     WindowResizeTopLeft,
@@ -52,6 +49,8 @@ pub enum AppEvent {
     ReturnButton,
     TitleBar,
     ChooseDeviceButton,
+    ModeSelectorPrevious,
+    ModeSelectorNext,
 }
 
 impl AppEvent {
@@ -64,13 +63,13 @@ impl AppEvent {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum AppEventType {
     MousePressed,
     MouseReleased,
 }
 
 pub struct App {
-    font_hashmap: HashMap<&'static str, Font>,
     do_exit: bool,
     over_states: HashSet<AppEvent>,
     title_text: Text,
@@ -94,13 +93,13 @@ impl App {
     fn switch_document(
         &mut self,
         new_document: Box<dyn DocumentTrait>,
-        api: Rc<RefCell<RenderApi>>,
+        api: Arc<Mutex<RenderApi>>,
         document_id: DocumentId,
         global_state: Arc<GlobalState>,
     ) {
         self.document.unload(api, document_id);
         self.document = new_document;
-        self.title_text = self.font_hashmap["OpenSans_15px"]
+        self.title_text = global_state.font_hashmap_mutex.lock_poisoned()["OpenSans_15px"]
             .create_text(self.document.get_title().to_string(), None);
 
         global_state.request_redraw();
@@ -108,10 +107,13 @@ impl App {
 
     fn calculate_event(
         &mut self,
-        hit_items: Vec<HitTestItem>,
+        hit_items: &Vec<HitTestItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
+        self.document
+            .calculate_event(hit_items, wrapper, target_event_type);
+
         if !hit_items.is_empty() {
             if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
                 match target_event_type {
@@ -137,7 +139,7 @@ impl App {
                         AppEvent::ReturnButton => {
                             self.switch_document(
                                 Box::new(DeviceList::new()),
-                                wrapper.api.clone(),
+                                wrapper.api_mutex.clone(),
                                 wrapper.document_id,
                                 wrapper.global_state.clone(),
                             );
@@ -153,31 +155,6 @@ impl App {
 
                             *selected_device_id_option = None;
                             *selected_device_config_option = None;
-                        }
-                        AppEvent::ChooseDeviceButton => {
-                            {
-                                let device_id_vec =
-                                    wrapper.global_state.device_id_vec_mutex.lock_poisoned();
-                                let mut selected_device_id_option = wrapper
-                                    .global_state
-                                    .selected_device_id_option_mutex
-                                    .lock_poisoned();
-
-                                *selected_device_id_option =
-                                    Some(device_id_vec[hit_items[0].tag.1 as usize].clone());
-                                wrapper.global_state.push_connection_event(
-                                    ConnectionEvent::RequestDeviceConfig(
-                                        device_id_vec[hit_items[0].tag.1 as usize].clone(),
-                                    ),
-                                );
-                            }
-
-                            self.switch_document(
-                                Box::new(DeviceConfigurator::new(&self.font_hashmap, wrapper)),
-                                wrapper.api.clone(),
-                                wrapper.document_id,
-                                wrapper.global_state.clone(),
-                            );
                         }
                         _ => {}
                     },
@@ -195,26 +172,13 @@ impl App {
 
         for hit_item in hit_items {
             if let Some(event) = AppEvent::from(hit_item.tag.0) {
-                if let AppEvent::WindowResizeTopLeft
-                | AppEvent::WindowResizeTopRight
-                | AppEvent::WindowResizeTop
-                | AppEvent::WindowResizeBottomLeft
-                | AppEvent::WindowResizeBottomRight
-                | AppEvent::WindowResizeBottom
-                | AppEvent::WindowResizeLeft
-                | AppEvent::WindowResizeRight
-                | AppEvent::CloseButton
-                | AppEvent::MaximizeButton
-                | AppEvent::MinimizeButton
-                | AppEvent::ReturnButton = event
-                {
-                    new_over_state.insert(event);
-                }
+                new_over_state.insert(event);
             }
         }
 
         if self.over_states != new_over_state {
             self.update_title_bar_over_state(&new_over_state);
+            self.document.update_over_state(&new_over_state);
         }
 
         self.update_window_resize_cursor_icon(&new_over_state, wrapper);
@@ -252,8 +216,8 @@ impl App {
                     );
                     txn.generate_frame(0, RenderReasons::empty());
                     wrapper
-                        .api
-                        .borrow_mut()
+                        .api_mutex
+                        .lock_poisoned()
                         .send_transaction(wrapper.document_id, txn);
 
                     break;
@@ -263,7 +227,7 @@ impl App {
     }
 
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
-        self.document.update_app_state(&self.font_hashmap, wrapper);
+        self.document.update_app_state(wrapper);
 
         // switch back to device list when the device disconnect
         let driver_hashmap = wrapper.global_state.driver_hashmap_mutex.lock_poisoned();
@@ -281,7 +245,7 @@ impl App {
              mut selected_device_config_option: MutexGuard<Option<DeviceConfig>>| {
                 self.switch_document(
                     Box::new(DeviceList::new()),
-                    wrapper.api.clone(),
+                    wrapper.api_mutex.clone(),
                     wrapper.document_id,
                     wrapper.global_state.clone(),
                 );
@@ -315,8 +279,8 @@ impl WindowInitTrait<GlobalState> for App {
             value.a = (to.a - from.a) * coef as f32 + from.a
         };
         let window_size = wrapper.get_window_size();
-        let mut font_hashmap = HashMap::new();
         let document = Box::new(DeviceList::new());
+        let mut font_hashmap = HashMap::new();
 
         font_hashmap.insert(
             "OpenSans_15px",
@@ -331,16 +295,21 @@ impl WindowInitTrait<GlobalState> for App {
             wrapper.load_font("OpenSans", Au::from_f32_px(10.0)),
         );
 
+        let title_text =
+            font_hashmap["OpenSans_15px"].create_text(document.get_title().to_string(), None);
+
+        *wrapper.global_state.font_hashmap_mutex.lock_poisoned() = font_hashmap;
+
+        let api = wrapper.api_mutex.lock_poisoned();
+
         Box::new(Self {
-            title_text: font_hashmap["OpenSans_15px"]
-                .create_text(document.get_title().to_string(), None),
-            font_hashmap,
             do_exit: false,
             over_states: HashSet::new(),
-            close_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
-            maximize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
-            minimize_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
-            return_button_color_key: wrapper.api.borrow().generate_property_binding_key(),
+            title_text,
+            close_button_color_key: api.generate_property_binding_key(),
+            maximize_button_color_key: api.generate_property_binding_key(),
+            minimize_button_color_key: api.generate_property_binding_key(),
+            return_button_color_key: api.generate_property_binding_key(),
             close_button_color_animation: Animation::new(
                 ColorF::new_u(255, 79, 0, 100),
                 over_color_animation,
@@ -390,10 +359,10 @@ impl WindowTrait<GlobalState> for App {
                 self.update_over_states(hit_items, wrapper);
             }
             Event::MousePressed(MouseButton::Left) => {
-                self.calculate_event(hit_items, wrapper, AppEventType::MousePressed);
+                self.calculate_event(&hit_items, wrapper, AppEventType::MousePressed);
             }
             Event::MouseReleased(MouseButton::Left) => {
-                self.calculate_event(hit_items, wrapper, AppEventType::MouseReleased);
+                self.calculate_event(&hit_items, wrapper, AppEventType::MouseReleased);
             }
             Event::MousePosition => {
                 self.update_over_states(hit_items, wrapper);
@@ -422,6 +391,20 @@ impl WindowTrait<GlobalState> for App {
     }
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
+        if let Some(new_document) = wrapper
+            .global_state
+            .new_document_option_mutex
+            .lock_poisoned()
+            .take()
+        {
+            self.switch_document(
+                new_document,
+                wrapper.api_mutex.clone(),
+                wrapper.document_id,
+                wrapper.global_state.clone(),
+            );
+        }
+
         if self.update_app_state_timer.check() {
             self.update_app_state(wrapper);
         }
@@ -453,9 +436,9 @@ impl WindowTrait<GlobalState> for App {
         );
 
         // calcultate the scroll frame content size
-        self.scroll_content_size =
-            self.document
-                .calculate_size(self.scroll_frame_size, &self.font_hashmap, wrapper);
+        self.scroll_content_size = self
+            .document
+            .calculate_size(self.scroll_frame_size, wrapper);
 
         // scroll frame / main frame
         frame_builder.builder.push_simple_stacking_context(
@@ -501,7 +484,6 @@ impl WindowTrait<GlobalState> for App {
             frame_builder,
             space_and_clip,
             clip_chain_id,
-            &self.font_hashmap,
             wrapper,
         );
 
@@ -539,31 +521,40 @@ impl WindowTrait<GlobalState> for App {
     }
 
     fn unload(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
-        for font in self.font_hashmap.values_mut() {
+        for font in wrapper
+            .global_state
+            .font_hashmap_mutex
+            .lock_poisoned()
+            .values_mut()
+        {
             font.unload();
         }
 
         self.document
-            .unload(wrapper.api.clone(), wrapper.document_id);
+            .unload(wrapper.api_mutex.clone(), wrapper.document_id);
     }
 }
 
 pub trait DocumentTrait {
     fn get_title(&self) -> &'static str;
 
-    fn update_app_state(
+    fn calculate_event(
         &mut self,
-        _font_hashmap: &HashMap<&'static str, Font>,
+        _hit_items: &Vec<HitTestItem>,
         _wrapper: &mut WindowWrapper<GlobalState>,
+        _target_event_type: AppEventType,
     ) {
     }
+
+    fn update_over_state(&mut self, _new_over_state: &HashSet<AppEvent>) {}
+
+    fn update_app_state(&mut self, _wrapper: &mut WindowWrapper<GlobalState>) {}
 
     fn animate(&mut self, _txn: &mut Transaction, _wrapper: &mut WindowWrapper<GlobalState>) {}
 
     fn calculate_size(
         &mut self,
         frame_size: LayoutSize,
-        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize;
 
@@ -573,9 +564,8 @@ pub trait DocumentTrait {
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
         clip_chain_id: ClipChainId,
-        font_hashmap: &HashMap<&'static str, Font>,
         wrapper: &mut WindowWrapper<GlobalState>,
     );
 
-    fn unload(&mut self, _api: Rc<RefCell<RenderApi>>, _document_id: DocumentId) {}
+    fn unload(&mut self, _api_mutex: Arc<Mutex<RenderApi>>, _document_id: DocumentId) {}
 }
