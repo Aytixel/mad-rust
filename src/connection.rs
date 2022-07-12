@@ -6,7 +6,7 @@ use crate::{ConnectionEvent, Driver, GlobalState};
 
 use tokio::{spawn, time};
 use util::connection::command::{CommandTrait, Commands, RequestDeviceConfig};
-use util::connection::Server;
+use util::connection::{ConnectionState, Server};
 use util::thread::MutexTrait;
 
 pub struct Connection {
@@ -41,9 +41,10 @@ impl Connection {
                                     server_dualchannel
                                         .send_async((
                                             device_id.socket_addr,
-                                            true,
-                                            RequestDeviceConfig::new(device_id.serial_number)
-                                                .to_bytes(),
+                                            ConnectionState::Data(
+                                                RequestDeviceConfig::new(device_id.serial_number)
+                                                    .to_bytes(),
+                                            ),
                                         ))
                                         .await
                                         .ok();
@@ -64,44 +65,50 @@ impl Connection {
             spawn(async move {
                 loop {
                     // receive data from clients
-                    if let Ok((socket_addr, is_running, data)) =
+                    if let Ok((socket_addr, connection_state)) =
                         server_dualchannel.recv_async().await
                     {
                         let mut driver_hashmap = global_state.driver_hashmap_mutex.lock_poisoned();
 
-                        if is_running {
-                            if data.len() > 0 {
-                                match Commands::from(data) {
-                                    Commands::DriverConfigurationDescriptor(
-                                        driver_configuration_descriptor,
-                                    ) => {
-                                        // initiate driver data
-                                        driver_hashmap.insert(
-                                            socket_addr,
-                                            Driver::new(driver_configuration_descriptor),
-                                        );
-                                    }
-                                    Commands::DeviceList(device_list) => {
-                                        if let Some(driver) = driver_hashmap.get_mut(&socket_addr) {
-                                            driver.device_list = device_list;
+                        match connection_state {
+                            ConnectionState::Start => {}
+                            ConnectionState::Data(data) => {
+                                if data.len() > 0 {
+                                    match Commands::from(data) {
+                                        Commands::DriverConfigurationDescriptor(
+                                            driver_configuration_descriptor,
+                                        ) => {
+                                            // initiate driver data
+                                            driver_hashmap.insert(
+                                                socket_addr,
+                                                Driver::new(driver_configuration_descriptor),
+                                            );
                                         }
+                                        Commands::DeviceList(device_list) => {
+                                            if let Some(driver) =
+                                                driver_hashmap.get_mut(&socket_addr)
+                                            {
+                                                driver.device_list = device_list;
+                                            }
 
-                                        global_state.request_redraw();
-                                    }
-                                    Commands::DeviceConfig(device_config) => {
-                                        let mut selected_device_config_option = global_state
-                                            .selected_device_config_option_mutex
-                                            .lock_poisoned();
+                                            global_state.request_redraw();
+                                        }
+                                        Commands::DeviceConfig(device_config) => {
+                                            let mut selected_device_config_option = global_state
+                                                .selected_device_config_option_mutex
+                                                .lock_poisoned();
 
-                                        *selected_device_config_option = Some(device_config);
+                                            *selected_device_config_option = Some(device_config);
+                                        }
+                                        _ => {}
                                     }
-                                    _ => {}
                                 }
                             }
-                        } else {
-                            // clearing driver data
-                            driver_hashmap.remove(&socket_addr);
-                            global_state.request_redraw();
+                            ConnectionState::End => {
+                                // clearing driver data
+                                driver_hashmap.remove(&socket_addr);
+                                global_state.request_redraw();
+                            }
                         }
                     }
                 }

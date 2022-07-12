@@ -8,6 +8,13 @@ const PING_PACKET_DELAY: Duration = Duration::from_millis(500);
 const PACKET_TIMEOUT_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
+pub enum ConnectionState {
+    Start,
+    Data(Vec<u8>),
+    End,
+}
+
+#[derive(Clone)]
 enum Life {
     Ping,
     Timeout,
@@ -70,7 +77,7 @@ pub mod server {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{Life, Packet, MAX_BUFFER_SIZE, PING_PACKET_DELAY};
+    use super::{ConnectionState, Life, Packet, MAX_BUFFER_SIZE, PING_PACKET_DELAY};
 
     use crate::connection::MAX_PACKET_SIZE;
     use crate::thread::DualChannel;
@@ -84,16 +91,19 @@ pub mod server {
     struct Client {
         last_recv: Instant,
         socket_addr: SocketAddr,
-        child: DualChannel<(SocketAddr, bool, Vec<u8>)>,
+        child: DualChannel<(SocketAddr, ConnectionState)>,
         packet: Packet,
     }
 
     impl Client {
         async fn new(
             socket_addr: SocketAddr,
-            child: DualChannel<(SocketAddr, bool, Vec<u8>)>,
+            child: DualChannel<(SocketAddr, ConnectionState)>,
         ) -> Self {
-            child.send_async((socket_addr, true, vec![])).await.ok();
+            child
+                .send_async((socket_addr, ConnectionState::Start))
+                .await
+                .ok();
 
             Self {
                 last_recv: Instant::now(),
@@ -108,7 +118,7 @@ pub mod server {
 
             if let Some(data) = self.packet.recv(size, buffer) {
                 self.child
-                    .send_async((self.socket_addr, true, data))
+                    .send_async((self.socket_addr, ConnectionState::Data(data)))
                     .await
                     .ok();
             }
@@ -126,12 +136,12 @@ pub mod server {
     }
 
     pub struct Server {
-        pub dual_channel: DualChannel<(SocketAddr, bool, Vec<u8>)>,
+        pub dual_channel: DualChannel<(SocketAddr, ConnectionState)>,
     }
 
     impl Server {
         pub async fn new() -> Self {
-            let (host, child) = DualChannel::<(SocketAddr, bool, Vec<u8>)>::new();
+            let (host, child) = DualChannel::<(SocketAddr, ConnectionState)>::new();
 
             if let Ok(socket) = UdpSocket::bind("127.0.0.1:651").await {
                 let socket = Arc::new(socket);
@@ -170,7 +180,10 @@ pub mod server {
                                     }
                                     Life::Timeout => {
                                         client_hashmap_mutex.lock().await.remove(&socket_addr);
-                                        child.send_async((socket_addr, false, vec![])).await.ok();
+                                        child
+                                            .send_async((socket_addr, ConnectionState::End))
+                                            .await
+                                            .ok();
                                     }
                                 }
                             }
@@ -195,7 +208,10 @@ pub mod server {
 
                                 // connection end
                                 if size == MAX_BUFFER_SIZE {
-                                    child.send_async((socket_addr, false, vec![])).await.ok();
+                                    child
+                                        .send_async((socket_addr, ConnectionState::End))
+                                        .await
+                                        .ok();
                                     client_hashmap.remove(&socket_addr);
                                     continue;
                                 }
@@ -224,7 +240,9 @@ pub mod server {
                 // from server to client
                 spawn(async move {
                     loop {
-                        if let Ok((socket_addr, _, buffer)) = child.recv_async().await {
+                        if let Ok((socket_addr, ConnectionState::Data(buffer))) =
+                            child.recv_async().await
+                        {
                             if client_hashmap_mutex.lock().await.contains_key(&socket_addr) {
                                 socket
                                     .send_to(&buffer.len().to_be_bytes(), socket_addr)
@@ -253,7 +271,7 @@ pub mod client {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{Life, Packet, MAX_BUFFER_SIZE, PING_PACKET_DELAY};
+    use super::{ConnectionState, Life, Packet, MAX_BUFFER_SIZE, PING_PACKET_DELAY};
 
     use crate::connection::MAX_PACKET_SIZE;
     use crate::thread::DualChannel;
@@ -266,12 +284,12 @@ pub mod client {
     use tokio::time::{interval, sleep, Instant, MissedTickBehavior};
 
     pub struct Client {
-        pub dual_channel: DualChannel<(bool, Vec<u8>)>,
+        pub dual_channel: DualChannel<ConnectionState>,
     }
 
     impl Client {
         pub async fn new() -> Self {
-            let (host, child) = DualChannel::<(bool, Vec<u8>)>::new();
+            let (host, child) = DualChannel::<ConnectionState>::new();
 
             if let Ok(socket) = UdpSocket::bind("127.0.0.1:0").await {
                 socket.connect("127.0.0.1:651").await.ok();
@@ -331,14 +349,17 @@ pub mod client {
                                         if let Ok(size) = socket.recv(&mut buffer).await {
                                             // connection end
                                             if size == MAX_BUFFER_SIZE {
-                                                child.send_async((false, vec![])).await.ok();
+                                                child.send_async(ConnectionState::End).await.ok();
                                                 break;
                                             }
 
                                             *last_recv_mutex.lock().await = Instant::now();
 
                                             if let Some(data) = packet.recv(size, buffer) {
-                                                child.send_async((true, data)).await.ok();
+                                                child
+                                                    .send_async(ConnectionState::Data(data))
+                                                    .await
+                                                    .ok();
                                             }
                                         }
 
@@ -353,7 +374,9 @@ pub mod client {
 
                                 spawn(async move {
                                     loop {
-                                        if let Ok((_, buffer)) = child.recv_async().await {
+                                        if let Ok(ConnectionState::Data(buffer)) =
+                                            child.recv_async().await
+                                        {
                                             socket.send(&buffer.len().to_be_bytes()).await.ok();
 
                                             for chunk in buffer.chunks(MAX_PACKET_SIZE) {
@@ -368,14 +391,14 @@ pub mod client {
 
                             sleep(Duration::from_millis(100)).await;
 
-                            child.send_async((true, vec![])).await.ok();
+                            child.send_async(ConnectionState::Start).await.ok();
 
                             // shutdown all task
                             shutdown_notifier.notified().await;
                             connection_timeout_handle.abort();
                             from_server_to_client.abort();
                             from_client_to_server.abort();
-                            child.send_async((false, vec![])).await.ok();
+                            child.send_async(ConnectionState::End).await.ok();
                         }
 
                         interval_.tick().await;

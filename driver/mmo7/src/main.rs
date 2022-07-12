@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::time::{interval, MissedTickBehavior};
 use util::config::ConfigManager;
-use util::connection::{command::*, Client};
+use util::connection::{command::*, Client, ConnectionState};
 use util::thread::{kill_double, DualChannel, MutexTrait};
 use util::time::TIMEOUT_1S;
 
@@ -352,7 +352,7 @@ fn run_device(
 
 // connection processing
 async fn run_connection(
-    client_dualchannel: DualChannel<(bool, Vec<u8>)>,
+    client_dualchannel: DualChannel<ConnectionState>,
     child: DualChannel<Message>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
     icon_data: Vec<u8>,
@@ -391,50 +391,51 @@ async fn run_connection(
             );
 
             loop {
-                if let Ok((is_running, data)) = client_dualchannel.recv_async().await {
-                    if is_running {
-                        if data.len() == 0 {
+                if let Ok(connection_state) = client_dualchannel.recv_async().await {
+                    match connection_state {
+                        ConnectionState::Start => {
                             client_dualchannel
-                                .send_async((true, driver_configuration_descriptor.to_bytes()))
+                                .send_async(ConnectionState::Data(
+                                    driver_configuration_descriptor.to_bytes(),
+                                ))
                                 .await
                                 .ok();
 
                             update_device_list(&client_dualchannel, device_list_mutex.clone())
                                 .await;
-                        } else {
-                            match Commands::from(data) {
-                                Commands::RequestDeviceConfig(request_device_config) => {
-                                    let mouses_config = mouses_config_mutex.lock().await;
-
-                                    if let Some(mouse_config) = mouses_config
-                                        .config
-                                        .get(&request_device_config.serial_number)
-                                    {
-                                        client_dualchannel
-                                            .send_async((
-                                                true,
-                                                DeviceConfig::new(
-                                                    request_device_config.serial_number,
-                                                    mouse_config.to_config(),
-                                                )
-                                                .to_bytes(),
-                                            ))
-                                            .await
-                                            .ok();
-                                    }
-                                }
-                                Commands::DeviceConfig(device_config) => {
-                                    let mut mouses_config = mouses_config_mutex.lock().await;
-
-                                    mouses_config.config.insert(
-                                        device_config.serial_number,
-                                        ButtonConfigs::from_config(&device_config.config),
-                                    );
-                                    mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
-                                }
-                                _ => {}
-                            }
                         }
+                        ConnectionState::Data(data) => match Commands::from(data) {
+                            Commands::RequestDeviceConfig(request_device_config) => {
+                                let mouses_config = mouses_config_mutex.lock().await;
+
+                                if let Some(mouse_config) = mouses_config
+                                    .config
+                                    .get(&request_device_config.serial_number)
+                                {
+                                    client_dualchannel
+                                        .send_async(ConnectionState::Data(
+                                            DeviceConfig::new(
+                                                request_device_config.serial_number,
+                                                mouse_config.to_config(),
+                                            )
+                                            .to_bytes(),
+                                        ))
+                                        .await
+                                        .ok();
+                                }
+                            }
+                            Commands::DeviceConfig(device_config) => {
+                                let mut mouses_config = mouses_config_mutex.lock().await;
+
+                                mouses_config.config.insert(
+                                    device_config.serial_number,
+                                    ButtonConfigs::from_config(&device_config.config),
+                                );
+                                mouses_config_state_id.fetch_add(1, Ordering::SeqCst);
+                            }
+                            _ => {}
+                        },
+                        ConnectionState::End => {}
                     }
                 }
             }
@@ -455,7 +456,7 @@ async fn run_connection(
 }
 
 async fn update_device_list(
-    client_dualchannel: &DualChannel<(bool, Vec<u8>)>,
+    client_dualchannel: &DualChannel<ConnectionState>,
     device_list_mutex: Arc<Mutex<HashSet<String>>>,
 ) {
     let mut serial_number_vec = vec![];
@@ -465,7 +466,9 @@ async fn update_device_list(
     }
 
     client_dualchannel
-        .send_async((true, DeviceList::new(serial_number_vec).to_bytes()))
+        .send_async(ConnectionState::Data(
+            DeviceList::new(serial_number_vec).to_bytes(),
+        ))
         .await
         .ok();
 }
