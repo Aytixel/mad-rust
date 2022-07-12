@@ -21,7 +21,9 @@ use image::load_from_memory;
 use util::thread::MutexTrait;
 use util::time::Timer;
 use webrender::api::units::{Au, DeviceIntPoint, DeviceIntRect, DeviceIntSize, WorldPoint};
-use webrender::api::{ColorF, DocumentId, Epoch, FontKey, HitTestItem, PipelineId, RenderReasons};
+use webrender::api::{
+    ColorF, DocumentId, Epoch, FontKey, HitTestResultItem, PipelineId, RenderReasons,
+};
 use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -185,7 +187,7 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
         self.context.window().set_outer_position(position)
     }
 
-    fn do_hit_test(&self) -> Vec<HitTestItem> {
+    fn do_hit_test(&self) -> Vec<HitTestResultItem> {
         match self.mouse_position {
             Some(mouse_position) => {
                 self.api_mutex
@@ -522,7 +524,7 @@ pub trait WindowTrait<T: GlobalStateTrait> {
     fn on_event(
         &mut self,
         _event: Event,
-        _hit_items: Vec<HitTestItem>,
+        _hit_items: Vec<HitTestResultItem>,
         _wrapper: &mut WindowWrapper<T>,
     ) {
     }

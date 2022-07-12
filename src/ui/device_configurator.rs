@@ -13,10 +13,10 @@ use webrender::api::units::{
     LayoutPoint, LayoutRect, LayoutSideOffsets, LayoutSize, LayoutTransform,
 };
 use webrender::api::{
-    BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipChainId, ClipMode, ColorF,
-    CommonItemProperties, DynamicProperties, HitTestItem, NormalBorder, PrimitiveFlags,
-    PropertyBinding, PropertyBindingKey, PropertyValue, ReferenceFrameKind, SpaceAndClipInfo,
-    SpatialTreeItemKey, TransformStyle,
+    BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipMode, ColorF, CommonItemProperties,
+    DynamicProperties, HitTestResultItem, NormalBorder, PrimitiveFlags, PropertyBinding,
+    PropertyBindingKey, PropertyValue, ReferenceFrameKind, SpaceAndClipInfo, SpatialTreeItemKey,
+    TransformStyle,
 };
 use webrender::euclid::Angle;
 
@@ -92,7 +92,7 @@ impl DocumentTrait for DeviceConfigurator {
 
     fn calculate_event(
         &mut self,
-        hit_items: &Vec<HitTestItem>,
+        hit_items: &Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
@@ -238,7 +238,6 @@ impl DocumentTrait for DeviceConfigurator {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
-        clip_chain_id: ClipChainId,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
@@ -313,7 +312,7 @@ impl DocumentTrait for DeviceConfigurator {
             );
             builder.push_hit_test(
                 mode_selector_previous_button_layout_rect,
-                clip_chain_id,
+                space_and_clip.clip_chain_id,
                 space_and_clip.spatial_id,
                 PrimitiveFlags::empty(),
                 (AppEvent::ModeSelectorPrevious.into(), 0),
@@ -338,7 +337,7 @@ impl DocumentTrait for DeviceConfigurator {
             );
             builder.push_hit_test(
                 mode_selector_next_button_layout_rect,
-                clip_chain_id,
+                space_and_clip.clip_chain_id,
                 space_and_clip.spatial_id,
                 PrimitiveFlags::empty(),
                 (AppEvent::ModeSelectorNext.into(), 0),
@@ -376,7 +375,7 @@ impl DocumentTrait for DeviceConfigurator {
                 mode_selector_left_arrow_layout_rect,
                 SpaceAndClipInfo {
                     spatial_id,
-                    clip_id: space_and_clip.clip_id,
+                    clip_chain_id: space_and_clip.clip_chain_id,
                 },
             );
 
@@ -402,7 +401,7 @@ impl DocumentTrait for DeviceConfigurator {
                 mode_selector_right_arrow_layout_rect,
                 SpaceAndClipInfo {
                     spatial_id,
-                    clip_id: space_and_clip.clip_id,
+                    clip_chain_id: space_and_clip.clip_chain_id,
                 },
             );
 

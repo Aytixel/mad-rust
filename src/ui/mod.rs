@@ -20,8 +20,8 @@ use util::thread::MutexTrait;
 use util::time::Timer;
 use webrender::api::units::{Au, LayoutPoint, LayoutRect, LayoutSize, LayoutVector2D};
 use webrender::api::{
-    APZScrollGeneration, ClipChainId, ColorF, CommonItemProperties, DocumentId, ExternalScrollId,
-    HasScrollLinkedEffect, HitTestItem, PipelineId, PrimitiveFlags, PropertyBindingKey,
+    APZScrollGeneration, ColorF, CommonItemProperties, DocumentId, ExternalScrollId,
+    HasScrollLinkedEffect, HitTestResultItem, PipelineId, PrimitiveFlags, PropertyBindingKey,
     RenderReasons, SampledScrollOffset, SpaceAndClipInfo, SpatialTreeItemKey,
 };
 use webrender::{RenderApi, Transaction};
@@ -107,7 +107,7 @@ impl App {
 
     fn calculate_event(
         &mut self,
-        hit_items: &Vec<HitTestItem>,
+        hit_items: &Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
@@ -165,7 +165,7 @@ impl App {
 
     fn update_over_states(
         &mut self,
-        hit_items: Vec<HitTestItem>,
+        hit_items: Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let mut new_over_state = HashSet::new();
@@ -188,7 +188,7 @@ impl App {
     fn calculate_wheel_scroll(
         &mut self,
         delta: PhysicalPosition<f64>,
-        hit_items: Vec<HitTestItem>,
+        hit_items: Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         for hit_item in hit_items {
@@ -343,7 +343,7 @@ impl WindowTrait<GlobalState> for App {
     fn on_event(
         &mut self,
         event: Event,
-        hit_items: Vec<HitTestItem>,
+        hit_items: Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         match event {
@@ -447,13 +447,9 @@ impl WindowTrait<GlobalState> for App {
             PrimitiveFlags::empty(),
         );
 
-        let clip_chain_id = frame_builder
-            .builder
-            .define_clip_chain(None, [frame_builder.space_and_clip.clip_id]);
-
         frame_builder.builder.push_hit_test(
             LayoutRect::from_size(self.scroll_frame_size),
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::empty(),
             (AppEvent::Scroll.into(), EXT_SCROLL_ID_ROOT as u16),
@@ -470,12 +466,14 @@ impl WindowTrait<GlobalState> for App {
             SpatialTreeItemKey::new(0, 0),
         );
         let clip_id = frame_builder.builder.define_clip_rect(
-            &frame_builder.space_and_clip,
+            frame_builder.space_and_clip.spatial_id,
             LayoutRect::from_size(self.scroll_frame_size),
         );
         let space_and_clip = SpaceAndClipInfo {
             spatial_id,
-            clip_id,
+            clip_chain_id: frame_builder
+                .builder
+                .define_clip_chain(Some(frame_builder.space_and_clip.clip_chain_id), [clip_id]),
         };
 
         // draw the scroll frame content
@@ -483,7 +481,6 @@ impl WindowTrait<GlobalState> for App {
             self.scroll_frame_size,
             frame_builder,
             space_and_clip,
-            clip_chain_id,
             wrapper,
         );
 
@@ -493,7 +490,7 @@ impl WindowTrait<GlobalState> for App {
         self.draw_title_bar(
             wrapper.window_size,
             frame_builder,
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             wrapper.global_state.clone(),
         );
         self.draw_window_resize(wrapper.window_size, frame_builder);
@@ -540,7 +537,7 @@ pub trait DocumentTrait {
 
     fn calculate_event(
         &mut self,
-        _hit_items: &Vec<HitTestItem>,
+        _hit_items: &Vec<HitTestResultItem>,
         _wrapper: &mut WindowWrapper<GlobalState>,
         _target_event_type: AppEventType,
     ) {
@@ -563,7 +560,6 @@ pub trait DocumentTrait {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
-        clip_chain_id: ClipChainId,
         wrapper: &mut WindowWrapper<GlobalState>,
     );
 

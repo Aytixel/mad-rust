@@ -198,7 +198,7 @@ impl App {
                 return_border_layout_rect,
                 SpaceAndClipInfo {
                     spatial_id,
-                    clip_id: frame_builder.space_and_clip.clip_id,
+                    clip_chain_id: frame_builder.space_and_clip.clip_chain_id,
                 },
             );
             let white_border_side = BorderSide {

@@ -26,7 +26,7 @@ impl CommonItemPropertiesExt for CommonItemProperties {
     fn to_space_and_clip_info(&self) -> SpaceAndClipInfo {
         SpaceAndClipInfo {
             spatial_id: self.spatial_id,
-            clip_id: self.clip_id,
+            clip_chain_id: self.clip_chain_id,
         }
     }
 }
@@ -58,13 +58,13 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         mode: ClipMode,
     ) -> ClipId {
         let clip_id = self.define_clip_rounded_rect(
-            &common.to_space_and_clip_info(),
+            common.spatial_id,
             ComplexClipRegion::new(common.clip_rect, radii, mode),
         );
 
         let mut common = *common;
 
-        common.clip_id = clip_id;
+        common.clip_chain_id = self.define_clip_chain(None, [clip_id]);
 
         self.push_rect(&common, common.clip_rect, color);
 
@@ -79,13 +79,13 @@ impl DisplayListBuilderExt for DisplayListBuilder {
         mode: ClipMode,
     ) -> ClipId {
         let clip_id = self.define_clip_rounded_rect(
-            &common.to_space_and_clip_info(),
+            common.spatial_id,
             ComplexClipRegion::new(common.clip_rect, radii, mode),
         );
 
         let mut common = *common;
 
-        common.clip_id = clip_id;
+        common.clip_chain_id = self.define_clip_chain(None, [clip_id]);
 
         self.push_rect_with_animation(&common, common.clip_rect, color);
 

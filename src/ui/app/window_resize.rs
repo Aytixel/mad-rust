@@ -108,7 +108,7 @@ impl App {
     ) {
         let builder = &mut frame_builder.builder;
         let clip_id = builder.define_clip_rounded_rect(
-            &frame_builder.space_and_clip,
+            frame_builder.space_and_clip.spatial_id,
             ComplexClipRegion::new(
                 LayoutRect::from_origin_and_size(
                     LayoutPoint::new(5.0, 5.0),

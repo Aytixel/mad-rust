@@ -16,10 +16,10 @@ use image::load_from_memory;
 use util::thread::MutexTrait;
 use webrender::api::units::{LayoutPoint, LayoutRect, LayoutSize};
 use webrender::api::{
-    AlphaType, BorderRadius, ClipChainId, ClipMode, ColorF, CommonItemProperties, DocumentId,
-    DynamicProperties, FilterOp, HitTestItem, IdNamespace, ImageData, ImageDescriptor,
-    ImageDescriptorFlags, ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding,
-    PropertyBindingKey, PropertyValue, SpaceAndClipInfo,
+    AlphaType, BorderRadius, ClipMode, ColorF, CommonItemProperties, DocumentId, DynamicProperties,
+    FilterOp, HitTestResultItem, IdNamespace, ImageData, ImageDescriptor, ImageDescriptorFlags,
+    ImageFormat, ImageKey, ImageRendering, PrimitiveFlags, PropertyBinding, PropertyBindingKey,
+    PropertyValue, SpaceAndClipInfo,
 };
 use webrender::{RenderApi, Transaction};
 
@@ -96,7 +96,7 @@ impl DocumentTrait for DeviceList {
 
     fn calculate_event(
         &mut self,
-        hit_items: &Vec<HitTestItem>,
+        hit_items: &Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
@@ -315,7 +315,6 @@ impl DocumentTrait for DeviceList {
         frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
-        clip_chain_id: ClipChainId,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
@@ -351,12 +350,9 @@ impl DocumentTrait for DeviceList {
             );
 
             // add hit test
-            let clip_chain_id =
-                builder.define_clip_chain(Some(clip_chain_id), [space_and_clip.clip_id]);
-
             builder.push_hit_test(
                 device_button_layout_rect,
-                clip_chain_id,
+                space_and_clip.clip_chain_id,
                 space_and_clip.spatial_id,
                 PrimitiveFlags::empty(),
                 (
