@@ -26,8 +26,14 @@ struct Mode {
     mode: u8,
 }
 
+struct Parameter {
+    name: Text,
+    value: Text,
+}
+
 pub struct DeviceConfigurator {
     mode_vec: Vec<Mode>,
+    parameter_vec: Vec<Parameter>,
     current_mode: usize,
     device_info_text: Text,
     mode_selector_previous_button_color_key: PropertyBindingKey<ColorF>,
@@ -58,6 +64,7 @@ impl DeviceConfigurator {
 
         Self {
             mode_vec: vec![],
+            parameter_vec: vec![],
             current_mode: 0,
             device_info_text: wrapper.global_state.font_hashmap_mutex.lock_poisoned()
                 ["OpenSans_13px"]
@@ -81,6 +88,31 @@ impl DeviceConfigurator {
                 ColorF::new_u(33, 33, 33, 0),
                 over_color_animation,
             ),
+        }
+    }
+
+    fn update_parameter(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
+        if let Some(selected_device_config) = wrapper
+            .global_state
+            .selected_device_config_option_mutex
+            .lock_poisoned()
+            .as_ref()
+        {
+            let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+
+            // parameters
+            for (index, parameter) in self.parameter_vec.iter_mut().enumerate() {
+                let is_shift_mode = self.mode_vec[self.current_mode].is_shift_mode;
+                let mode = self.mode_vec[self.current_mode].mode;
+
+                parameter.value = font_hashmap["OpenSans_13px"].create_text(
+                    selected_device_config.config[index][is_shift_mode as usize][mode as usize]
+                        .clone(),
+                    None,
+                );
+            }
+
+            wrapper.global_state.request_redraw();
         }
     }
 }
@@ -107,7 +139,7 @@ impl DocumentTrait for DeviceConfigurator {
                                 self.current_mode -= 1;
                             }
 
-                            wrapper.global_state.request_redraw();
+                            self.update_parameter(wrapper);
                         }
                         AppEvent::ModeSelectorNext => {
                             if self.current_mode == self.mode_vec.len() - 1 {
@@ -116,7 +148,7 @@ impl DocumentTrait for DeviceConfigurator {
                                 self.current_mode += 1;
                             }
 
-                            wrapper.global_state.request_redraw();
+                            self.update_parameter(wrapper);
                         }
                         _ => {}
                     },
@@ -158,40 +190,70 @@ impl DocumentTrait for DeviceConfigurator {
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         // add mode to the vec
         if self.mode_vec.is_empty() {
-            if let Some(devide_id) = &*wrapper
+            if let Some(selected_device_config) = wrapper
                 .global_state
-                .selected_device_id_option_mutex
+                .selected_device_config_option_mutex
                 .lock_poisoned()
+                .as_ref()
             {
-                if let Some(driver) = wrapper
+                if let Some(devide_id) = wrapper
                     .global_state
-                    .driver_hashmap_mutex
+                    .selected_device_id_option_mutex
                     .lock_poisoned()
-                    .get(&devide_id.socket_addr)
+                    .as_ref()
                 {
-                    let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+                    if let Some(driver) = wrapper
+                        .global_state
+                        .driver_hashmap_mutex
+                        .lock_poisoned()
+                        .get(&devide_id.socket_addr)
+                    {
+                        let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
-                    // mode
-                    for i in 0..driver.driver_configuration_descriptor.mode_count {
-                        self.mode_vec.push(Mode {
-                            name: font_hashmap["OpenSans_13px"]
-                                .create_text(format!("Mode {}", i + 1), None),
-                            is_shift_mode: false,
-                            mode: i as u8,
-                        });
+                        // mode
+                        for i in 0..driver.driver_configuration_descriptor.mode_count {
+                            self.mode_vec.push(Mode {
+                                name: font_hashmap["OpenSans_13px"]
+                                    .create_text(format!("Mode {}", i + 1), None),
+                                is_shift_mode: false,
+                                mode: i as u8,
+                            });
+                        }
+
+                        // shift mode
+                        for i in 0..driver.driver_configuration_descriptor.shift_mode_count {
+                            self.mode_vec.push(Mode {
+                                name: font_hashmap["OpenSans_13px"]
+                                    .create_text(format!("Shift mode {}", i + 1), None),
+                                is_shift_mode: true,
+                                mode: i as u8,
+                            });
+                        }
+
+                        // parameters
+                        for (index, button_name) in driver
+                            .driver_configuration_descriptor
+                            .button_name_vec
+                            .iter()
+                            .enumerate()
+                        {
+                            let is_shift_mode = self.mode_vec[self.current_mode].is_shift_mode;
+                            let mode = self.mode_vec[self.current_mode].mode;
+
+                            self.parameter_vec.push(Parameter {
+                                name: font_hashmap["OpenSans_13px"]
+                                    .create_text(format!("{button_name} : "), None),
+                                value: font_hashmap["OpenSans_13px"].create_text(
+                                    selected_device_config.config[index][is_shift_mode as usize]
+                                        [mode as usize]
+                                        .clone(),
+                                    None,
+                                ),
+                            });
+                        }
+
+                        wrapper.global_state.request_redraw();
                     }
-
-                    // shift mode
-                    for i in 0..driver.driver_configuration_descriptor.shift_mode_count {
-                        self.mode_vec.push(Mode {
-                            name: font_hashmap["OpenSans_13px"]
-                                .create_text(format!("Shift mode {}", i + 1), None),
-                            is_shift_mode: true,
-                            mode: i as u8,
-                        });
-                    }
-
-                    wrapper.global_state.request_redraw();
                 }
             }
         }
@@ -231,13 +293,22 @@ impl DocumentTrait for DeviceConfigurator {
         frame_size: LayoutSize,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
-        let mut size = LayoutSize::new(self.device_info_text.size.width + 20.0, 25.0);
+        let mut height = 25.0;
+        let mut width = self.device_info_text.size.width + 20.0;
 
         if !self.mode_vec.is_empty() {
-            size += LayoutSize::new(210.0, 25.0);
+            height += 25.0;
+            width += 210.0;
+
+            // parameters
+            for parameter in self.parameter_vec.iter() {
+                width = width.max(parameter.name.size.width + parameter.value.size.width + 20.0);
+            }
+
+            height += 35.0 * (self.parameter_vec.len() - 1) as f32 + 10.0;
         }
 
-        size
+        LayoutSize::new(width, height)
     }
 
     fn draw(
@@ -426,6 +497,44 @@ impl DocumentTrait for DeviceConfigurator {
                 }),
             );
             builder.pop_reference_frame();
+
+            // parameters
+            let mut parameter_position = LayoutPoint::new(0.0, 35.0);
+
+            for parameter in self.parameter_vec.iter() {
+                let parameter_layout_rect = LayoutRect::from_origin_and_size(
+                    parameter_position,
+                    LayoutSize::new(
+                        parameter.name.size.width + parameter.value.size.width + 20.0,
+                        25.0,
+                    ),
+                );
+                let parameter_common_item_properties =
+                    &CommonItemProperties::new(parameter_layout_rect, space_and_clip);
+
+                builder.push_rounded_rect(
+                    &parameter_common_item_properties,
+                    ColorF::new_u(66, 66, 66, 100),
+                    BorderRadius::uniform(3.0),
+                    ClipMode::Clip,
+                );
+                parameter.name.push_text(
+                    builder,
+                    space_and_clip,
+                    parameter_position + LayoutSize::new(10.0, 4.0),
+                    ColorF::WHITE,
+                    None,
+                );
+                parameter.value.push_text(
+                    builder,
+                    space_and_clip,
+                    parameter_position + LayoutSize::new(parameter.name.size.width + 10.0, 4.0),
+                    ColorF::WHITE,
+                    None,
+                );
+
+                parameter_position += LayoutSize::new(0.0, 35.0);
+            }
         }
     }
 }
