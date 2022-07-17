@@ -158,34 +158,41 @@ impl DocumentTrait for DeviceConfigurator {
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         // add mode to the vec
         if self.mode_vec.is_empty() {
-            if let Some(device_config) = &*wrapper
+            if let Some(devide_id) = &*wrapper
                 .global_state
-                .selected_device_config_option_mutex
+                .selected_device_id_option_mutex
                 .lock_poisoned()
             {
-                let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+                if let Some(driver) = wrapper
+                    .global_state
+                    .driver_hashmap_mutex
+                    .lock_poisoned()
+                    .get(&devide_id.socket_addr)
+                {
+                    let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
-                // mode
-                for i in 0..device_config.config[0][0].len() {
-                    self.mode_vec.push(Mode {
-                        name: font_hashmap["OpenSans_13px"]
-                            .create_text(format!("Mode {}", i + 1), None),
-                        is_shift_mode: false,
-                        mode: i as u8,
-                    });
+                    // mode
+                    for i in 0..driver.driver_configuration_descriptor.mode_count {
+                        self.mode_vec.push(Mode {
+                            name: font_hashmap["OpenSans_13px"]
+                                .create_text(format!("Mode {}", i + 1), None),
+                            is_shift_mode: false,
+                            mode: i as u8,
+                        });
+                    }
+
+                    // shift mode
+                    for i in 0..driver.driver_configuration_descriptor.shift_mode_count {
+                        self.mode_vec.push(Mode {
+                            name: font_hashmap["OpenSans_13px"]
+                                .create_text(format!("Shift mode {}", i + 1), None),
+                            is_shift_mode: true,
+                            mode: i as u8,
+                        });
+                    }
+
+                    wrapper.global_state.request_redraw();
                 }
-
-                // shift mode
-                for i in 0..device_config.config[0][1].len() {
-                    self.mode_vec.push(Mode {
-                        name: font_hashmap["OpenSans_13px"]
-                            .create_text(format!("Shift mode {}", i + 1), None),
-                        is_shift_mode: true,
-                        mode: i as u8,
-                    });
-                }
-
-                wrapper.global_state.request_redraw();
             }
         }
     }
