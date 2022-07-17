@@ -64,7 +64,7 @@ impl DisplayListBuilderExt for DisplayListBuilder {
 
         let mut common = *common;
 
-        common.clip_chain_id = self.define_clip_chain(None, [clip_id]);
+        common.clip_chain_id = self.define_clip_chain(Some(common.clip_chain_id), [clip_id]);
 
         self.push_rect(&common, common.clip_rect, color);
 
@@ -85,7 +85,7 @@ impl DisplayListBuilderExt for DisplayListBuilder {
 
         let mut common = *common;
 
-        common.clip_chain_id = self.define_clip_chain(None, [clip_id]);
+        common.clip_chain_id = self.define_clip_chain(Some(common.clip_chain_id), [clip_id]);
 
         self.push_rect_with_animation(&common, common.clip_rect, color);
 
