@@ -76,6 +76,13 @@ impl TextInput {
         }
     }
 
+    fn set_focus(&mut self, focus: bool) {
+        self.focused = focus;
+        self.width = self.first_text.size.width
+            + self.second_text.size.width
+            + (self.focused as u8 as f32 * 5.0);
+    }
+
     fn update_text(&mut self, font: &Font) {
         let (first_text, second_text) = self.text.split_at(self.cursor_position);
 
@@ -346,7 +353,7 @@ impl DocumentTrait for DeviceConfigurator {
         match target_event_type {
             AppEventType::MousePressed | AppEventType::Focus(false) => {
                 for parameter in self.parameter_vec.iter_mut() {
-                    parameter.value.focused = false;
+                    parameter.value.set_focus(false);
                 }
 
                 self.current_focused_parameter_option = None;
@@ -492,7 +499,7 @@ impl DocumentTrait for DeviceConfigurator {
                         AppEvent::Parameter => {
                             self.parameter_vec[hit_items[0].tag.1 as usize]
                                 .value
-                                .focused = true;
+                                .set_focus(true);
                             self.current_focused_parameter_option =
                                 Some(hit_items[0].tag.1 as usize);
 
