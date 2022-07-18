@@ -28,7 +28,7 @@ use webrender::render_api::{RenderApi, Transaction};
 use webrender::{Renderer, RendererOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{
-    ButtonId, DeviceEvent, ElementState, MouseButton, MouseScrollDelta, WindowEvent,
+    ButtonId, DeviceEvent, ElementState, KeyboardInput, MouseButton, MouseScrollDelta, WindowEvent,
 };
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
@@ -45,6 +45,9 @@ pub enum Event {
     MouseReleased(MouseButton),
     MouseEntered,
     MouseLeft,
+    Focus(bool),
+    Key(KeyboardInput),
+    Char(char),
     DeviceMotion(PhysicalPosition<f64>),
     DeviceReleased(ButtonId),
 }
@@ -400,6 +403,27 @@ impl<T: GlobalStateTrait> Window<T> {
                             }
                             WindowEvent::CloseRequested => {
                                 exit = true;
+                            }
+                            WindowEvent::ReceivedCharacter(char) => {
+                                self.window.on_event(
+                                    Event::Char(char),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                );
+                            }
+                            WindowEvent::Focused(focused) => {
+                                self.window.on_event(
+                                    Event::Focus(focused),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                );
+                            }
+                            WindowEvent::KeyboardInput { input, .. } => {
+                                self.window.on_event(
+                                    Event::Key(input),
+                                    self.wrapper.do_hit_test(),
+                                    &mut self.wrapper,
+                                );
                             }
                             WindowEvent::CursorMoved { position, .. } => {
                                 self.wrapper.mouse_position = Some(position);

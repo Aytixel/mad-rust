@@ -1,24 +1,28 @@
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::animation::{Animation, AnimationCurve};
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
-use crate::window::{FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
+use crate::window::{Font, FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
 use crate::GlobalState;
 
 use super::{AppEvent, AppEventType, DocumentTrait};
 
 use hashbrown::HashSet;
 use util::thread::MutexTrait;
+use util::time::Timer;
 use webrender::api::units::{
     LayoutPoint, LayoutRect, LayoutSideOffsets, LayoutSize, LayoutTransform,
 };
 use webrender::api::{
     BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipMode, ColorF, CommonItemProperties,
-    DynamicProperties, HitTestResultItem, NormalBorder, PrimitiveFlags, PropertyBinding,
-    PropertyBindingKey, PropertyValue, ReferenceFrameKind, SpaceAndClipInfo, SpatialTreeItemKey,
-    TransformStyle,
+    DisplayListBuilder, DynamicProperties, GlyphOptions, HitTestResultItem, NormalBorder,
+    PrimitiveFlags, PropertyBinding, PropertyBindingKey, PropertyValue, ReferenceFrameKind,
+    SpaceAndClipInfo, SpatialTreeItemKey, TransformStyle,
 };
 use webrender::euclid::Angle;
+use webrender::{RenderApi, Transaction};
+use winit::event::VirtualKeyCode;
 
 struct Mode {
     name: Text,
@@ -26,14 +30,192 @@ struct Mode {
     mode: u8,
 }
 
+struct TextInput {
+    text: String,
+    focused: bool,
+    first_text: Text,
+    second_text: Text,
+    width: f32,
+    height: f32,
+    cursor_height: f32,
+    cursor_position: usize,
+    cursor_color_key: PropertyBindingKey<ColorF>,
+    cursor_color: ColorF,
+    cursor_color_state: bool,
+    cursor_timer: Timer,
+}
+
+impl TextInput {
+    fn new(
+        mut text: String,
+        font: &Font,
+        api_mutex: &Mutex<RenderApi>,
+        cursor_color: ColorF,
+        cursor_height: f32,
+    ) -> Self {
+        text.retain(|c| c != '\n' && c != '\r');
+
+        let first_text = font.create_text(text[..0].to_string(), None);
+        let second_text = font.create_text(text[0..].to_string(), None);
+
+        Self {
+            text,
+            focused: false,
+            first_text,
+            width: second_text.size.width,
+            height: second_text.size.height,
+            second_text,
+            cursor_height,
+            cursor_position: 0,
+            cursor_color_key: api_mutex.lock_poisoned().generate_property_binding_key(),
+            cursor_color,
+            cursor_color_state: true,
+            cursor_timer: Timer::new(Duration::from_millis(350)),
+        }
+    }
+
+    fn update_text(&mut self, font: &Font) {
+        let (first_text, second_text) = self.text.split_at(self.cursor_position);
+
+        self.first_text = font.create_text(first_text.to_string(), None);
+        self.second_text = font.create_text(second_text.to_string(), None);
+        self.width = self.first_text.size.width
+            + self.second_text.size.width
+            + (self.focused as u8 as f32 * 5.0);
+        self.height = self
+            .first_text
+            .size
+            .height
+            .max(self.second_text.size.height);
+    }
+
+    fn add_char(&mut self, font: &Font, char: char) {
+        self.text.insert(self.cursor_position, char);
+        self.cursor_position += 1;
+
+        while !self.text.is_char_boundary(self.cursor_position) {
+            self.cursor_position += 1;
+        }
+
+        self.update_text(font);
+    }
+
+    fn delete_char(&mut self, font: &Font) {
+        if self.text.len() > self.cursor_position {
+            self.text.remove(self.cursor_position);
+        }
+
+        self.update_text(font);
+    }
+
+    fn back_char(&mut self, font: &Font) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+
+            while !self.text.is_char_boundary(self.cursor_position) {
+                self.cursor_position -= 1;
+            }
+
+            self.text.remove(self.cursor_position);
+        }
+
+        self.update_text(font);
+    }
+
+    fn change_cursor_position(&mut self, font: &Font, cursor_position: usize) {
+        self.cursor_position = cursor_position.min(self.text.len());
+
+        while !self.text.is_char_boundary(self.cursor_position) {
+            self.cursor_position += 1;
+        }
+
+        self.update_text(font);
+    }
+
+    fn cursor_left(&mut self, font: &Font) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+
+            while !self.text.is_char_boundary(self.cursor_position) {
+                self.cursor_position -= 1;
+            }
+
+            self.change_cursor_position(font, self.cursor_position);
+        }
+    }
+
+    fn cursor_right(&mut self, font: &Font) {
+        if self.cursor_position < usize::MAX {
+            self.change_cursor_position(font, self.cursor_position + 1);
+        }
+    }
+
+    fn animate(&mut self) -> Option<PropertyValue<ColorF>> {
+        if self.cursor_timer.check() {
+            self.cursor_color_state = !self.cursor_color_state;
+
+            Some(PropertyValue {
+                key: self.cursor_color_key,
+                value: if self.cursor_color_state {
+                    self.cursor_color
+                } else {
+                    ColorF::TRANSPARENT
+                },
+            })
+        } else {
+            None
+        }
+    }
+
+    fn push_text(
+        &self,
+        builder: &mut DisplayListBuilder,
+        space_and_clip: SpaceAndClipInfo,
+        position: LayoutPoint,
+        color: ColorF,
+        glyph_options: Option<GlyphOptions>,
+    ) {
+        self.first_text
+            .push_text(builder, space_and_clip, position, color, glyph_options);
+
+        if self.focused {
+            let cursor_layout_rect = LayoutRect::from_origin_and_size(
+                position + LayoutSize::new(self.first_text.size.width + 2.0, 0.0),
+                LayoutSize::new(1.0, self.cursor_height),
+            );
+            let cursor_common_item_properties =
+                &CommonItemProperties::new(cursor_layout_rect, space_and_clip);
+
+            builder.push_rect_with_animation(
+                cursor_common_item_properties,
+                cursor_layout_rect,
+                PropertyBinding::Binding(self.cursor_color_key, self.cursor_color),
+            );
+        }
+
+        self.second_text.push_text(
+            builder,
+            space_and_clip,
+            position
+                + LayoutSize::new(
+                    self.first_text.size.width + (self.focused as u8 as f32 * 5.0),
+                    0.0,
+                ),
+            color,
+            glyph_options,
+        );
+    }
+}
+
 struct Parameter {
     name: Text,
-    value: Text,
+    value: TextInput,
 }
 
 pub struct DeviceConfigurator {
     mode_vec: Vec<Mode>,
     parameter_vec: Vec<Parameter>,
+    current_focused_parameter_option: Option<usize>,
     current_mode: usize,
     device_info_text: Text,
     mode_selector_previous_button_color_key: PropertyBindingKey<ColorF>,
@@ -65,6 +247,7 @@ impl DeviceConfigurator {
         Self {
             mode_vec: vec![],
             parameter_vec: vec![],
+            current_focused_parameter_option: None,
             current_mode: 0,
             device_info_text: wrapper.global_state.font_hashmap_mutex.lock_poisoned()
                 ["OpenSans_13px"]
@@ -100,15 +283,17 @@ impl DeviceConfigurator {
         {
             let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
-            // parameters
             for (index, parameter) in self.parameter_vec.iter_mut().enumerate() {
                 let is_shift_mode = self.mode_vec[self.current_mode].is_shift_mode;
                 let mode = self.mode_vec[self.current_mode].mode;
 
-                parameter.value = font_hashmap["OpenSans_13px"].create_text(
+                parameter.value = TextInput::new(
                     selected_device_config.config[index][is_shift_mode as usize][mode as usize]
                         .clone(),
-                    None,
+                    &font_hashmap["OpenSans_13px"],
+                    &wrapper.api_mutex,
+                    ColorF::WHITE,
+                    17.0,
                 );
             }
 
@@ -128,6 +313,91 @@ impl DocumentTrait for DeviceConfigurator {
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
+        match target_event_type {
+            AppEventType::MousePressed | AppEventType::Focus(false) => {
+                for parameter in self.parameter_vec.iter_mut() {
+                    parameter.value.focused = false;
+                }
+
+                self.current_focused_parameter_option = None;
+
+                wrapper.global_state.request_redraw();
+            }
+            AppEventType::KeyPressed { keycode, modifiers } => {
+                let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+
+                match keycode {
+                    VirtualKeyCode::Left => {
+                        if let Some(current_focused_parameter) =
+                            self.current_focused_parameter_option
+                        {
+                            self.parameter_vec[current_focused_parameter]
+                                .value
+                                .cursor_left(&font_hashmap["OpenSans_13px"]);
+
+                            wrapper.global_state.request_redraw();
+                        }
+                    }
+                    VirtualKeyCode::Right => {
+                        if let Some(current_focused_parameter) =
+                            self.current_focused_parameter_option
+                        {
+                            self.parameter_vec[current_focused_parameter]
+                                .value
+                                .cursor_right(&font_hashmap["OpenSans_13px"]);
+
+                            wrapper.global_state.request_redraw();
+                        }
+                    }
+                    VirtualKeyCode::Delete => {
+                        if let Some(current_focused_parameter) =
+                            self.current_focused_parameter_option
+                        {
+                            self.parameter_vec[current_focused_parameter]
+                                .value
+                                .delete_char(&font_hashmap["OpenSans_13px"]);
+
+                            wrapper.global_state.request_redraw();
+                        }
+                    }
+                    VirtualKeyCode::Back => {
+                        if let Some(current_focused_parameter) =
+                            self.current_focused_parameter_option
+                        {
+                            self.parameter_vec[current_focused_parameter]
+                                .value
+                                .back_char(&font_hashmap["OpenSans_13px"]);
+
+                            wrapper.global_state.request_redraw();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            AppEventType::Char(char) => {
+                if let Some(current_focused_parameter) = self.current_focused_parameter_option {
+                    if char != '\n'
+                        && char != '\r'
+                        && char != '\u{3}'
+                        && char != '\u{8}'
+                        && char != '\u{16}'
+                        && char != '\u{18}'
+                        && char != '\u{1b}'
+                        && char != '\u{7f}'
+                    {
+                        let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
+
+                        self.parameter_vec[current_focused_parameter]
+                            .value
+                            .add_char(&font_hashmap["OpenSans_13px"], char);
+
+                        wrapper.global_state.request_redraw();
+                    }
+                }
+            }
+            _ => {}
+        }
+
         if !hit_items.is_empty() {
             if let Some(event) = AppEvent::from(hit_items[0].tag.0) {
                 match target_event_type {
@@ -149,6 +419,15 @@ impl DocumentTrait for DeviceConfigurator {
                             }
 
                             self.update_parameter(wrapper);
+                        }
+                        AppEvent::Parameter => {
+                            self.parameter_vec[hit_items[0].tag.1 as usize]
+                                .value
+                                .focused = true;
+                            self.current_focused_parameter_option =
+                                Some(hit_items[0].tag.1 as usize);
+
+                            wrapper.global_state.request_redraw();
                         }
                         _ => {}
                     },
@@ -243,11 +522,14 @@ impl DocumentTrait for DeviceConfigurator {
                             self.parameter_vec.push(Parameter {
                                 name: font_hashmap["OpenSans_13px"]
                                     .create_text(format!("{button_name} : "), None),
-                                value: font_hashmap["OpenSans_13px"].create_text(
+                                value: TextInput::new(
                                     selected_device_config.config[index][is_shift_mode as usize]
                                         [mode as usize]
                                         .clone(),
-                                    None,
+                                    &font_hashmap["OpenSans_13px"],
+                                    &wrapper.api_mutex,
+                                    ColorF::WHITE,
+                                    17.0,
                                 ),
                             });
                         }
@@ -259,11 +541,7 @@ impl DocumentTrait for DeviceConfigurator {
         }
     }
 
-    fn animate(
-        &mut self,
-        txn: &mut webrender::Transaction,
-        _wrapper: &mut WindowWrapper<GlobalState>,
-    ) {
+    fn animate(&mut self, txn: &mut Transaction, _wrapper: &mut WindowWrapper<GlobalState>) {
         let mut colors = vec![];
 
         if self.mode_selector_previous_button_color_animation.update() {
@@ -277,6 +555,15 @@ impl DocumentTrait for DeviceConfigurator {
                 key: self.mode_selector_next_button_color_key,
                 value: self.mode_selector_next_button_color_animation.value,
             });
+        }
+
+        // parameters
+        for property_value in self
+            .parameter_vec
+            .iter_mut()
+            .filter_map(|parameter| parameter.value.animate())
+        {
+            colors.push(property_value);
         }
 
         if !colors.is_empty() {
@@ -302,7 +589,7 @@ impl DocumentTrait for DeviceConfigurator {
 
             // parameters
             for parameter in self.parameter_vec.iter() {
-                width = width.max(parameter.name.size.width + parameter.value.size.width + 20.0);
+                width = width.max(parameter.name.size.width + parameter.value.width + 20.0);
             }
 
             height += 35.0 * (self.parameter_vec.len() - 1) as f32 + 10.0;
@@ -501,11 +788,11 @@ impl DocumentTrait for DeviceConfigurator {
             // parameters
             let mut parameter_position = LayoutPoint::new(0.0, 35.0);
 
-            for parameter in self.parameter_vec.iter() {
+            for (index, parameter) in self.parameter_vec.iter().enumerate() {
                 let parameter_layout_rect = LayoutRect::from_origin_and_size(
                     parameter_position,
                     LayoutSize::new(
-                        parameter.name.size.width + parameter.value.size.width + 20.0,
+                        parameter.name.size.width + parameter.value.width + 20.0,
                         25.0,
                     ),
                 );
@@ -517,6 +804,13 @@ impl DocumentTrait for DeviceConfigurator {
                     ColorF::new_u(66, 66, 66, 100),
                     BorderRadius::uniform(3.0),
                     ClipMode::Clip,
+                );
+                builder.push_hit_test(
+                    parameter_layout_rect,
+                    space_and_clip.clip_chain_id,
+                    space_and_clip.spatial_id,
+                    PrimitiveFlags::empty(),
+                    (AppEvent::Parameter.into(), index as u16),
                 );
                 parameter.name.push_text(
                     builder,

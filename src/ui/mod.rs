@@ -26,7 +26,7 @@ use webrender::api::{
 };
 use webrender::{RenderApi, Transaction};
 use winit::dpi::PhysicalPosition;
-use winit::event::MouseButton;
+use winit::event::{ElementState, ModifiersState, MouseButton, VirtualKeyCode};
 
 use self::device_list::DeviceList;
 
@@ -51,6 +51,7 @@ pub enum AppEvent {
     ChooseDeviceButton,
     ModeSelectorPrevious,
     ModeSelectorNext,
+    Parameter,
 }
 
 impl AppEvent {
@@ -67,6 +68,16 @@ impl AppEvent {
 pub enum AppEventType {
     MousePressed,
     MouseReleased,
+    Focus(bool),
+    KeyPressed {
+        keycode: VirtualKeyCode,
+        modifiers: ModifiersState,
+    },
+    KeyReleased {
+        keycode: VirtualKeyCode,
+        modifiers: ModifiersState,
+    },
+    Char(char),
 }
 
 pub struct App {
@@ -158,6 +169,7 @@ impl App {
                         }
                         _ => {}
                     },
+                    _ => {}
                 }
             }
         }
@@ -188,7 +200,7 @@ impl App {
     fn calculate_wheel_scroll(
         &mut self,
         delta: PhysicalPosition<f64>,
-        hit_items: Vec<HitTestResultItem>,
+        hit_items: &Vec<HitTestResultItem>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         for hit_item in hit_items {
@@ -358,6 +370,9 @@ impl WindowTrait<GlobalState> for App {
             Event::MouseEntered | Event::MouseLeft => {
                 self.update_over_states(hit_items, wrapper);
             }
+            Event::Focus(focused) => {
+                self.calculate_event(&hit_items, wrapper, AppEventType::Focus(focused));
+            }
             Event::MousePressed(MouseButton::Left) => {
                 self.calculate_event(&hit_items, wrapper, AppEventType::MousePressed);
             }
@@ -368,8 +383,33 @@ impl WindowTrait<GlobalState> for App {
                 self.update_over_states(hit_items, wrapper);
             }
             Event::MouseWheel(delta) => {
-                self.calculate_wheel_scroll(delta, hit_items.clone(), wrapper);
+                self.calculate_wheel_scroll(delta, &hit_items, wrapper);
                 self.update_over_states(hit_items, wrapper);
+            }
+            Event::Key(input) => {
+                if let Some(keycode) = input.virtual_keycode {
+                    match input.state {
+                        ElementState::Pressed => self.calculate_event(
+                            &hit_items,
+                            wrapper,
+                            AppEventType::KeyPressed {
+                                keycode,
+                                modifiers: input.modifiers,
+                            },
+                        ),
+                        ElementState::Released => self.calculate_event(
+                            &hit_items,
+                            wrapper,
+                            AppEventType::KeyReleased {
+                                keycode,
+                                modifiers: input.modifiers,
+                            },
+                        ),
+                    }
+                }
+            }
+            Event::Char(char) => {
+                self.calculate_event(&hit_items, wrapper, AppEventType::Char(char));
             }
             Event::DeviceMotion(delta) => {
                 self.update_window_resize(delta, wrapper);
