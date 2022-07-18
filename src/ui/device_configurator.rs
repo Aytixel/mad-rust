@@ -10,6 +10,7 @@ use super::{AppEvent, AppEventType, DocumentTrait};
 
 use copypasta::{ClipboardContext, ClipboardProvider};
 use hashbrown::HashSet;
+use util::connection::command::DeviceConfig;
 use util::thread::MutexTrait;
 use util::time::Timer;
 use webrender::api::units::{
@@ -309,6 +310,26 @@ impl DeviceConfigurator {
             wrapper.global_state.request_redraw();
         }
     }
+
+    fn update_selected_config(
+        &self,
+        selected_device_config_option_mutex: &Mutex<Option<DeviceConfig>>,
+    ) {
+        if let Some(current_focused_parameter) = self.current_focused_parameter_option {
+            if let Some(selected_device_config) =
+                selected_device_config_option_mutex.lock_poisoned().as_mut()
+            {
+                let is_shift_mode = self.mode_vec[self.current_mode].is_shift_mode;
+                let mode = self.mode_vec[self.current_mode].mode;
+
+                selected_device_config.config[current_focused_parameter][is_shift_mode as usize]
+                    [mode as usize] = self.parameter_vec[current_focused_parameter]
+                    .value
+                    .text
+                    .clone();
+            }
+        }
+    }
 }
 
 impl DocumentTrait for DeviceConfigurator {
@@ -407,6 +428,9 @@ impl DocumentTrait for DeviceConfigurator {
                                     self.parameter_vec[current_focused_parameter]
                                         .value
                                         .add_str(&font_hashmap["OpenSans_13px"], text.as_str());
+                                    self.update_selected_config(
+                                        &wrapper.global_state.selected_device_config_option_mutex,
+                                    );
 
                                     wrapper.global_state.request_redraw();
                                 }
@@ -432,6 +456,9 @@ impl DocumentTrait for DeviceConfigurator {
                         self.parameter_vec[current_focused_parameter]
                             .value
                             .add_char(&font_hashmap["OpenSans_13px"], char);
+                        self.update_selected_config(
+                            &wrapper.global_state.selected_device_config_option_mutex,
+                        );
 
                         wrapper.global_state.request_redraw();
                     }
