@@ -11,6 +11,7 @@ gleam = "0.13.1"
 winit = "0.26.1"
 window-vibrancy = "0.1.3"
 image = "0.24.2"
+copypasta = "0.8.1"
 
 util = { git = "https://github.com/Aytixel/mad-rust-util", package = "mad-rust-util" }
 

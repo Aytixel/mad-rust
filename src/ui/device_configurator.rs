@@ -8,6 +8,7 @@ use crate::GlobalState;
 
 use super::{AppEvent, AppEventType, DocumentTrait};
 
+use copypasta::{ClipboardContext, ClipboardProvider};
 use hashbrown::HashSet;
 use util::thread::MutexTrait;
 use util::time::Timer;
@@ -97,6 +98,12 @@ impl TextInput {
             self.cursor_position += 1;
         }
 
+        self.update_text(font);
+    }
+
+    fn add_str(&mut self, font: &Font, text: &str) {
+        self.text.insert_str(self.cursor_position, text);
+        self.cursor_position += text.len();
         self.update_text(font);
     }
 
@@ -218,6 +225,7 @@ pub struct DeviceConfigurator {
     current_focused_parameter_option: Option<usize>,
     current_mode: usize,
     device_info_text: Text,
+    clipboard_context: ClipboardContext,
     mode_selector_previous_button_color_key: PropertyBindingKey<ColorF>,
     mode_selector_next_button_color_key: PropertyBindingKey<ColorF>,
     mode_selector_previous_button_color_animation: Animation<ColorF>,
@@ -261,6 +269,7 @@ impl DeviceConfigurator {
                     ),
                     None,
                 ),
+            clipboard_context: ClipboardContext::new().unwrap(),
             mode_selector_previous_button_color_key,
             mode_selector_next_button_color_key,
             mode_selector_previous_button_color_animation: Animation::new(
@@ -369,6 +378,39 @@ impl DocumentTrait for DeviceConfigurator {
                                 .back_char(&font_hashmap["OpenSans_13px"]);
 
                             wrapper.global_state.request_redraw();
+                        }
+                    }
+                    VirtualKeyCode::C | VirtualKeyCode::X => {
+                        if modifiers.ctrl() {
+                            if let Some(current_focused_parameter) =
+                                self.current_focused_parameter_option
+                            {
+                                self.clipboard_context
+                                    .set_contents(
+                                        self.parameter_vec[current_focused_parameter]
+                                            .value
+                                            .text
+                                            .clone(),
+                                    )
+                                    .ok();
+                            }
+                        }
+                    }
+                    VirtualKeyCode::V => {
+                        if modifiers.ctrl() {
+                            if let Some(current_focused_parameter) =
+                                self.current_focused_parameter_option
+                            {
+                                if let Ok(mut text) = self.clipboard_context.get_contents() {
+                                    text.retain(|c| c != '\n' && c != '\r');
+
+                                    self.parameter_vec[current_focused_parameter]
+                                        .value
+                                        .add_str(&font_hashmap["OpenSans_13px"], text.as_str());
+
+                                    wrapper.global_state.request_redraw();
+                                }
+                            }
                         }
                     }
                     _ => {}
