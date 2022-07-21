@@ -393,6 +393,9 @@ impl DocumentTrait for DeviceConfigurator {
                             self.parameter_vec[current_focused_parameter]
                                 .value
                                 .delete_char(&font_hashmap["OpenSans_13px"]);
+                            self.update_selected_config(
+                                &wrapper.global_state.selected_device_config_option_mutex,
+                            );
 
                             wrapper.global_state.request_redraw();
                         }
@@ -404,6 +407,9 @@ impl DocumentTrait for DeviceConfigurator {
                             self.parameter_vec[current_focused_parameter]
                                 .value
                                 .back_char(&font_hashmap["OpenSans_13px"]);
+                            self.update_selected_config(
+                                &wrapper.global_state.selected_device_config_option_mutex,
+                            );
 
                             wrapper.global_state.request_redraw();
                         }
