@@ -671,10 +671,10 @@ impl DocumentTrait for DeviceConfigurator {
 
             // parameters
             for parameter in self.parameter_vec.iter() {
-                width = width.max(parameter.name.size.width + parameter.value.width + 20.0);
+                width = width.max(parameter.name.size.width + parameter.value.width + 30.0);
             }
 
-            height += 35.0 * (self.parameter_vec.len() - 1) as f32 + 10.0;
+            height += 35.0 * (self.parameter_vec.len() - 1) as f32 + 20.0;
         }
 
         LayoutSize::new(width, height)
@@ -868,7 +868,7 @@ impl DocumentTrait for DeviceConfigurator {
             builder.pop_reference_frame();
 
             // parameters
-            let mut parameter_position = LayoutPoint::new(0.0, 35.0);
+            let mut parameter_position = LayoutPoint::new(10.0, 45.0);
 
             for (index, parameter) in self.parameter_vec.iter().enumerate() {
                 let parameter_layout_rect = LayoutRect::from_origin_and_size(
