@@ -49,6 +49,18 @@ impl Connection {
                                         .await
                                         .ok();
                                 }
+                                ConnectionEvent::ApplyDeviceConfig(
+                                    socket_addr,
+                                    mut device_config,
+                                ) => {
+                                    server_dualchannel
+                                        .send_async((
+                                            socket_addr,
+                                            ConnectionState::Data(device_config.to_bytes()),
+                                        ))
+                                        .await
+                                        .ok();
+                                }
                             }
                         }
                     }

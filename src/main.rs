@@ -60,6 +60,7 @@ impl DeviceId {
 
 enum ConnectionEvent {
     RequestDeviceConfig(DeviceId),
+    ApplyDeviceConfig(SocketAddr, DeviceConfig),
 }
 
 pub struct GlobalState {

@@ -4,7 +4,7 @@ use std::time::Duration;
 use crate::animation::{Animation, AnimationCurve};
 use crate::window::ext::{ColorFTrait, DisplayListBuilderExt};
 use crate::window::{Font, FrameBuilder, GlobalStateTrait, Text, WindowWrapper};
-use crate::GlobalState;
+use crate::{ConnectionEvent, GlobalState};
 
 use super::{AppEvent, AppEventType, DocumentTrait};
 
@@ -230,14 +230,17 @@ struct Parameter {
 pub struct DeviceConfigurator {
     mode_vec: Vec<Mode>,
     parameter_vec: Vec<Parameter>,
-    current_focused_parameter_option: Option<usize>,
+    apply_configcurrent_focused_parameter_index_option: Option<usize>,
     current_mode: usize,
     device_info_text: Text,
+    apply_config_text: Text,
     clipboard_context: ClipboardContext,
     mode_selector_previous_button_color_key: PropertyBindingKey<ColorF>,
     mode_selector_next_button_color_key: PropertyBindingKey<ColorF>,
+    apply_config_button_color_key: PropertyBindingKey<ColorF>,
     mode_selector_previous_button_color_animation: Animation<ColorF>,
     mode_selector_next_button_color_animation: Animation<ColorF>,
+    apply_config_button_color_animation: Animation<ColorF>,
 }
 
 impl DeviceConfigurator {
@@ -248,46 +251,51 @@ impl DeviceConfigurator {
             .selected_device_id_option_mutex
             .lock_poisoned();
         let selected_device_id = selected_device_id_option.as_ref().unwrap();
-        let over_color_animation = |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
-            value.a = (to.a - from.a) * coef as f32 + from.a
-        };
-        let (mode_selector_previous_button_color_key, mode_selector_next_button_color_key) = {
+        let button_color_animation = Animation::new(
+            ColorF::new_u(33, 33, 33, 0),
+            |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
+                value.a = (to.a - from.a) * coef as f32 + from.a
+            },
+        );
+        let (
+            mode_selector_previous_button_color_key,
+            mode_selector_next_button_color_key,
+            apply_config_button_color_key,
+        ) = {
             let api = wrapper.api_mutex.lock_poisoned();
 
             (
                 api.generate_property_binding_key(),
                 api.generate_property_binding_key(),
+                api.generate_property_binding_key(),
             )
         };
+        let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
         Self {
             mode_vec: vec![],
             parameter_vec: vec![],
-            current_focused_parameter_option: None,
+            apply_configcurrent_focused_parameter_index_option: None,
             current_mode: 0,
-            device_info_text: wrapper.global_state.font_hashmap_mutex.lock_poisoned()
-                ["OpenSans_13px"]
-                .create_text(
-                    format!(
-                        "Selected device : {} | {} n°",
-                        driver_hashmap[&selected_device_id.socket_addr]
-                            .driver_configuration_descriptor
-                            .device_name,
-                        selected_device_id.serial_number
-                    ),
-                    None,
+            device_info_text: font_hashmap["OpenSans_13px"].create_text(
+                format!(
+                    "Selected device : {} | {} n°",
+                    driver_hashmap[&selected_device_id.socket_addr]
+                        .driver_configuration_descriptor
+                        .device_name,
+                    selected_device_id.serial_number
                 ),
+                None,
+            ),
+            apply_config_text: font_hashmap["OpenSans_13px"]
+                .create_text("Apply config".to_string(), None),
             clipboard_context: ClipboardContext::new().unwrap(),
             mode_selector_previous_button_color_key,
             mode_selector_next_button_color_key,
-            mode_selector_previous_button_color_animation: Animation::new(
-                ColorF::new_u(33, 33, 33, 0),
-                over_color_animation,
-            ),
-            mode_selector_next_button_color_animation: Animation::new(
-                ColorF::new_u(33, 33, 33, 0),
-                over_color_animation,
-            ),
+            apply_config_button_color_key,
+            mode_selector_previous_button_color_animation: button_color_animation.clone(),
+            mode_selector_next_button_color_animation: button_color_animation.clone(),
+            apply_config_button_color_animation: button_color_animation,
         }
     }
 
@@ -322,7 +330,9 @@ impl DeviceConfigurator {
         &self,
         selected_device_config_option_mutex: &Mutex<Option<DeviceConfig>>,
     ) {
-        if let Some(current_focused_parameter) = self.current_focused_parameter_option {
+        if let Some(current_focused_parameter) =
+            self.apply_configcurrent_focused_parameter_index_option
+        {
             if let Some(selected_device_config) =
                 selected_device_config_option_mutex.lock_poisoned().as_mut()
             {
@@ -350,97 +360,67 @@ impl DocumentTrait for DeviceConfigurator {
         wrapper: &mut WindowWrapper<GlobalState>,
         target_event_type: AppEventType,
     ) {
-        match target_event_type {
-            AppEventType::MousePressed | AppEventType::Focus(false) => {
-                for parameter in self.parameter_vec.iter_mut() {
-                    parameter.value.set_focus(false);
+        // parameters text input event logic
+        if let Some(current_focused_parameter_index) =
+            self.apply_configcurrent_focused_parameter_index_option
+        {
+            let current_focused_parameter =
+                &mut self.parameter_vec[current_focused_parameter_index].value;
+
+            match target_event_type {
+                AppEventType::MousePressed | AppEventType::Focus(false) => {
+                    for parameter in self.parameter_vec.iter_mut() {
+                        parameter.value.set_focus(false);
+                    }
+
+                    self.apply_configcurrent_focused_parameter_index_option = None;
+
+                    wrapper.global_state.request_redraw();
                 }
+                AppEventType::KeyPressed { keycode, modifiers } => {
+                    let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
-                self.current_focused_parameter_option = None;
-
-                wrapper.global_state.request_redraw();
-            }
-            AppEventType::KeyPressed { keycode, modifiers } => {
-                let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
-
-                match keycode {
-                    VirtualKeyCode::Left => {
-                        if let Some(current_focused_parameter) =
-                            self.current_focused_parameter_option
-                        {
-                            self.parameter_vec[current_focused_parameter]
-                                .value
-                                .cursor_left(&font_hashmap["OpenSans_13px"]);
-
+                    match keycode {
+                        VirtualKeyCode::Left => {
+                            current_focused_parameter.cursor_left(&font_hashmap["OpenSans_13px"]);
                             wrapper.global_state.request_redraw();
                         }
-                    }
-                    VirtualKeyCode::Right => {
-                        if let Some(current_focused_parameter) =
-                            self.current_focused_parameter_option
-                        {
-                            self.parameter_vec[current_focused_parameter]
-                                .value
-                                .cursor_right(&font_hashmap["OpenSans_13px"]);
-
+                        VirtualKeyCode::Right => {
+                            current_focused_parameter.cursor_right(&font_hashmap["OpenSans_13px"]);
                             wrapper.global_state.request_redraw();
                         }
-                    }
-                    VirtualKeyCode::Delete => {
-                        if let Some(current_focused_parameter) =
-                            self.current_focused_parameter_option
-                        {
-                            self.parameter_vec[current_focused_parameter]
-                                .value
-                                .delete_char(&font_hashmap["OpenSans_13px"]);
+                        VirtualKeyCode::Delete => {
+                            current_focused_parameter.delete_char(&font_hashmap["OpenSans_13px"]);
+
                             self.update_selected_config(
                                 &wrapper.global_state.selected_device_config_option_mutex,
                             );
 
                             wrapper.global_state.request_redraw();
                         }
-                    }
-                    VirtualKeyCode::Back => {
-                        if let Some(current_focused_parameter) =
-                            self.current_focused_parameter_option
-                        {
-                            self.parameter_vec[current_focused_parameter]
-                                .value
-                                .back_char(&font_hashmap["OpenSans_13px"]);
+                        VirtualKeyCode::Back => {
+                            current_focused_parameter.back_char(&font_hashmap["OpenSans_13px"]);
+
                             self.update_selected_config(
                                 &wrapper.global_state.selected_device_config_option_mutex,
                             );
 
                             wrapper.global_state.request_redraw();
                         }
-                    }
-                    VirtualKeyCode::C | VirtualKeyCode::X => {
-                        if modifiers.ctrl() {
-                            if let Some(current_focused_parameter) =
-                                self.current_focused_parameter_option
-                            {
+                        VirtualKeyCode::C | VirtualKeyCode::X => {
+                            if modifiers.ctrl() {
                                 self.clipboard_context
-                                    .set_contents(
-                                        self.parameter_vec[current_focused_parameter]
-                                            .value
-                                            .text
-                                            .clone(),
-                                    )
+                                    .set_contents(current_focused_parameter.text.clone())
                                     .ok();
                             }
                         }
-                    }
-                    VirtualKeyCode::V => {
-                        if modifiers.ctrl() {
-                            if let Some(current_focused_parameter) =
-                                self.current_focused_parameter_option
-                            {
+                        VirtualKeyCode::V => {
+                            if modifiers.ctrl() {
                                 if let Ok(mut text) = self.clipboard_context.get_contents() {
                                     text.retain(|c| c != '\n' && c != '\r');
-
-                                    self.parameter_vec[current_focused_parameter]
-                                        .value
+                                    current_focused_parameter
                                         .add_str(&font_hashmap["OpenSans_13px"], text.as_str());
+
                                     self.update_selected_config(
                                         &wrapper.global_state.selected_device_config_option_mutex,
                                     );
@@ -449,12 +429,10 @@ impl DocumentTrait for DeviceConfigurator {
                                 }
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
-            AppEventType::Char(char) => {
-                if let Some(current_focused_parameter) = self.current_focused_parameter_option {
+                AppEventType::Char(char) => {
                     if char != '\n'
                         && char != '\r'
                         && char != '\u{3}'
@@ -466,9 +444,8 @@ impl DocumentTrait for DeviceConfigurator {
                     {
                         let font_hashmap = wrapper.global_state.font_hashmap_mutex.lock_poisoned();
 
-                        self.parameter_vec[current_focused_parameter]
-                            .value
-                            .add_char(&font_hashmap["OpenSans_13px"], char);
+                        current_focused_parameter.add_char(&font_hashmap["OpenSans_13px"], char);
+
                         self.update_selected_config(
                             &wrapper.global_state.selected_device_config_option_mutex,
                         );
@@ -476,8 +453,8 @@ impl DocumentTrait for DeviceConfigurator {
                         wrapper.global_state.request_redraw();
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
 
         if !hit_items.is_empty() {
@@ -502,11 +479,32 @@ impl DocumentTrait for DeviceConfigurator {
 
                             self.update_parameter(wrapper);
                         }
+                        AppEvent::ApplyConfig => {
+                            if let (Some(selected_device_id), Some(selected_device_config)) = (
+                                wrapper
+                                    .global_state
+                                    .selected_device_id_option_mutex
+                                    .lock_poisoned()
+                                    .as_ref(),
+                                wrapper
+                                    .global_state
+                                    .selected_device_config_option_mutex
+                                    .lock_poisoned()
+                                    .as_ref(),
+                            ) {
+                                wrapper.global_state.push_connection_event(
+                                    ConnectionEvent::ApplyDeviceConfig(
+                                        selected_device_id.socket_addr,
+                                        selected_device_config.clone(),
+                                    ),
+                                );
+                            }
+                        }
                         AppEvent::Parameter => {
                             self.parameter_vec[hit_items[0].tag.1 as usize]
                                 .value
                                 .set_focus(true);
-                            self.current_focused_parameter_option =
+                            self.apply_configcurrent_focused_parameter_index_option =
                                 Some(hit_items[0].tag.1 as usize);
 
                             wrapper.global_state.request_redraw();
@@ -541,6 +539,19 @@ impl DocumentTrait for DeviceConfigurator {
             );
         } else {
             self.mode_selector_next_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 0),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_IN,
+            );
+        }
+        if new_over_state.contains(&&AppEvent::ApplyConfig) {
+            self.apply_config_button_color_animation.to(
+                ColorF::new_u(33, 33, 33, 100),
+                Duration::from_millis(100),
+                AnimationCurve::EASE_OUT,
+            );
+        } else {
+            self.apply_config_button_color_animation.to(
                 ColorF::new_u(33, 33, 33, 0),
                 Duration::from_millis(100),
                 AnimationCurve::EASE_IN,
@@ -638,6 +649,12 @@ impl DocumentTrait for DeviceConfigurator {
                 value: self.mode_selector_next_button_color_animation.value,
             });
         }
+        if self.apply_config_button_color_animation.update() {
+            colors.push(PropertyValue {
+                key: self.apply_config_button_color_key,
+                value: self.apply_config_button_color_animation.value,
+            });
+        }
 
         // parameters
         for property_value in self
@@ -703,6 +720,7 @@ impl DocumentTrait for DeviceConfigurator {
             BorderRadius::uniform(3.0),
             ClipMode::Clip,
         );
+
         self.device_info_text.push_text(
             builder,
             space_and_clip,
@@ -866,6 +884,46 @@ impl DocumentTrait for DeviceConfigurator {
                 }),
             );
             builder.pop_reference_frame();
+
+            // apply config button
+            let apply_config_button_layout_rect = LayoutRect::from_origin_and_size(
+                LayoutPoint::new(mode_selector_layout_rect.x_range().end + 10.0, 0.0),
+                LayoutSize::new(self.apply_config_text.size.width + 20.0, 25.0),
+            );
+            let apply_config_button_common_item_properties =
+                &CommonItemProperties::new(apply_config_button_layout_rect, space_and_clip);
+
+            builder.push_rounded_rect(
+                &apply_config_button_common_item_properties,
+                ColorF::new_u(66, 66, 66, 100),
+                BorderRadius::uniform(3.0),
+                ClipMode::Clip,
+            );
+            builder.push_rounded_rect_with_animation(
+                &apply_config_button_common_item_properties,
+                PropertyBinding::Binding(
+                    self.apply_config_button_color_key,
+                    self.apply_config_button_color_animation.value,
+                ),
+                BorderRadius::uniform(3.0),
+                ClipMode::Clip,
+            );
+
+            self.apply_config_text.push_text(
+                builder,
+                space_and_clip,
+                LayoutPoint::new(mode_selector_layout_rect.x_range().end + 20.0, 4.0),
+                ColorF::WHITE,
+                None,
+            );
+
+            builder.push_hit_test(
+                apply_config_button_layout_rect,
+                space_and_clip.clip_chain_id,
+                space_and_clip.spatial_id,
+                PrimitiveFlags::empty(),
+                (AppEvent::ApplyConfig.into(), 0),
+            );
 
             // parameters
             let mut parameter_position = LayoutPoint::new(10.0, 45.0);

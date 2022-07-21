@@ -51,6 +51,7 @@ pub enum AppEvent {
     ChooseDeviceButton,
     ModeSelectorPrevious,
     ModeSelectorNext,
+    ApplyConfig,
     Parameter,
 }
 
