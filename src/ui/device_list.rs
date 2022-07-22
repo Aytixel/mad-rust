@@ -49,7 +49,9 @@ struct DeviceData {
     device_name: String,
     icon_option: Option<Rc<DeviceIcon>>,
     animation: Animation<f32>,
+    over_color_animation: Animation<ColorF>,
     property_key: PropertyBindingKey<f32>,
+    over_color_key: PropertyBindingKey<ColorF>,
 }
 
 impl DeviceData {
@@ -58,7 +60,9 @@ impl DeviceData {
         device_name: String,
         icon_option: Option<Rc<DeviceIcon>>,
         animation: Animation<f32>,
+        over_color_animation: Animation<ColorF>,
         property_key: PropertyBindingKey<f32>,
+        over_color_key: PropertyBindingKey<ColorF>,
     ) -> Self {
         Self {
             to_remove: false,
@@ -66,7 +70,9 @@ impl DeviceData {
             device_name,
             icon_option,
             animation,
+            over_color_animation,
             property_key,
+            over_color_key,
         }
     }
 }
@@ -135,6 +141,24 @@ impl DocumentTrait for DeviceList {
         }
     }
 
+    fn update_over_state(&mut self, new_over_state: &HashSet<(AppEvent, u16)>) {
+        for (index, device_data) in self.device_data_vec.iter_mut().enumerate() {
+            if new_over_state.contains(&(AppEvent::ChooseDeviceButton, index as u16)) {
+                device_data.over_color_animation.to(
+                    ColorF::new_u(33, 33, 33, 100),
+                    Duration::from_millis(100),
+                    AnimationCurve::EASE_OUT,
+                );
+            } else {
+                device_data.over_color_animation.to(
+                    ColorF::new_u(33, 33, 33, 0),
+                    Duration::from_millis(100),
+                    AnimationCurve::EASE_IN,
+                );
+            }
+        }
+    }
+
     fn update_app_state(&mut self, wrapper: &mut WindowWrapper<GlobalState>) {
         let drained_device_data_vec: Vec<DeviceData> = self.device_data_vec.drain(..).collect();
         let mut device_icon_to_keep_hashset = HashSet::new();
@@ -155,6 +179,7 @@ impl DocumentTrait for DeviceList {
 
     fn animate(&mut self, txn: &mut Transaction, wrapper: &mut WindowWrapper<GlobalState>) {
         let mut floats = vec![];
+        let mut colors = vec![];
 
         for device_data in self.device_data_vec.iter_mut() {
             if device_data.animation.update() {
@@ -163,13 +188,19 @@ impl DocumentTrait for DeviceList {
                     value: device_data.animation.value,
                 });
             }
+            if device_data.over_color_animation.update() {
+                colors.push(PropertyValue {
+                    key: device_data.over_color_key,
+                    value: device_data.over_color_animation.value,
+                });
+            }
         }
 
-        if !floats.is_empty() {
+        if !floats.is_empty() || !colors.is_empty() {
             txn.append_dynamic_properties(DynamicProperties {
                 transforms: vec![],
                 floats,
-                colors: vec![],
+                colors,
             });
         }
         if let Some(device_icon_to_keep_hashset) = self.device_icon_to_keep_hashset_option.take() {
@@ -271,15 +302,28 @@ impl DocumentTrait for DeviceList {
                     animation.to(1.0, Duration::from_millis(400), AnimationCurve::EASE_IN_OUT);
                     device_data_to_keep_hashset.insert(self.device_data_vec.len());
 
+                    let (property_key, over_color_key) = {
+                        let api = wrapper.api_mutex.lock_poisoned();
+
+                        (
+                            api.generate_property_binding_key(),
+                            api.generate_property_binding_key(),
+                        )
+                    };
+
                     self.device_data_vec.push(DeviceData::new(
                         DeviceId::new(*socket_addr, serial_number.clone()),
                         driver.driver_configuration_descriptor.device_name.clone(),
                         self.device_icon_option_hashmap[socket_addr].clone(),
                         animation,
-                        wrapper
-                            .api_mutex
-                            .lock_poisoned()
-                            .generate_property_binding_key(),
+                        Animation::new(
+                            ColorF::new_u(33, 33, 33, 0),
+                            |from: &ColorF, to: &ColorF, value: &mut ColorF, coef: f64| {
+                                value.a = (to.a - from.a) * coef as f32 + from.a
+                            },
+                        ),
+                        property_key,
+                        over_color_key,
                     ));
                 }
 
@@ -323,7 +367,7 @@ impl DocumentTrait for DeviceList {
 
         device_id_vec.clear();
 
-        for device_data in self.device_data_vec.iter() {
+        for (index, device_data) in self.device_data_vec.iter().enumerate() {
             let device_button_layout_rect = LayoutRect::from_origin_and_size(
                 device_button_layout_point,
                 LayoutSize::new(150.0, 150.0),
@@ -348,6 +392,15 @@ impl DocumentTrait for DeviceList {
                 BorderRadius::uniform(3.0),
                 ClipMode::Clip,
             );
+            builder.push_rounded_rect_with_animation(
+                &device_button_common_item_properties,
+                PropertyBinding::Binding(
+                    device_data.over_color_key,
+                    device_data.over_color_animation.value,
+                ),
+                BorderRadius::uniform(3.0),
+                ClipMode::Clip,
+            );
 
             // add hit test
             builder.push_hit_test(
@@ -355,10 +408,7 @@ impl DocumentTrait for DeviceList {
                 space_and_clip.clip_chain_id,
                 space_and_clip.spatial_id,
                 PrimitiveFlags::empty(),
-                (
-                    AppEvent::ChooseDeviceButton.into(),
-                    device_id_vec.len() as u16,
-                ),
+                (AppEvent::ChooseDeviceButton.into(), index as u16),
             );
             device_id_vec.push(device_data.device_id.clone());
 

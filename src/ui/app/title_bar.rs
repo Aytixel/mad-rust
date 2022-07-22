@@ -22,8 +22,8 @@ use webrender::Transaction;
 use winit::dpi::PhysicalSize;
 
 impl App {
-    pub fn update_title_bar_over_state(&mut self, new_over_state: &HashSet<AppEvent>) {
-        if new_over_state.contains(&AppEvent::CloseButton) {
+    pub fn update_title_bar_over_state(&mut self, new_over_state: &HashSet<(AppEvent, u16)>) {
+        if new_over_state.contains(&(AppEvent::CloseButton, 0)) {
             self.close_button_color_animation.to(
                 ColorF::new_u(255, 79, 0, 150),
                 Duration::from_millis(100),
@@ -36,7 +36,7 @@ impl App {
                 AnimationCurve::EASE_IN,
             );
         }
-        if new_over_state.contains(&AppEvent::MaximizeButton) {
+        if new_over_state.contains(&(AppEvent::MaximizeButton, 0)) {
             self.maximize_button_color_animation.to(
                 ColorF::new_u(255, 189, 0, 150),
                 Duration::from_millis(100),
@@ -49,7 +49,7 @@ impl App {
                 AnimationCurve::EASE_IN,
             );
         }
-        if new_over_state.contains(&AppEvent::MinimizeButton) {
+        if new_over_state.contains(&(AppEvent::MinimizeButton, 0)) {
             self.minimize_button_color_animation.to(
                 ColorF::new_u(50, 221, 23, 150),
                 Duration::from_millis(100),
@@ -62,7 +62,7 @@ impl App {
                 AnimationCurve::EASE_IN,
             );
         }
-        if new_over_state.contains(&AppEvent::ReturnButton) {
+        if new_over_state.contains(&(AppEvent::ReturnButton, 0)) {
             self.return_button_color_animation.to(
                 ColorF::new_u(33, 33, 33, 100),
                 Duration::from_millis(100),

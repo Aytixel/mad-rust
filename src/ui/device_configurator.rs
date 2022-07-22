@@ -514,8 +514,8 @@ impl DocumentTrait for DeviceConfigurator {
         }
     }
 
-    fn update_over_state(&mut self, new_over_state: &HashSet<AppEvent>) {
-        if new_over_state.contains(&AppEvent::ModeSelectorPrevious) {
+    fn update_over_state(&mut self, new_over_state: &HashSet<(AppEvent, u16)>) {
+        if new_over_state.contains(&(AppEvent::ModeSelectorPrevious, 0)) {
             self.mode_selector_previous_button_color_animation.to(
                 ColorF::new_u(33, 33, 33, 100),
                 Duration::from_millis(100),
@@ -528,7 +528,7 @@ impl DocumentTrait for DeviceConfigurator {
                 AnimationCurve::EASE_IN,
             );
         }
-        if new_over_state.contains(&AppEvent::ModeSelectorNext) {
+        if new_over_state.contains(&(AppEvent::ModeSelectorNext, 0)) {
             self.mode_selector_next_button_color_animation.to(
                 ColorF::new_u(33, 33, 33, 100),
                 Duration::from_millis(100),
@@ -541,7 +541,7 @@ impl DocumentTrait for DeviceConfigurator {
                 AnimationCurve::EASE_IN,
             );
         }
-        if new_over_state.contains(&&AppEvent::ApplyConfig) {
+        if new_over_state.contains(&(AppEvent::ApplyConfig, 0)) {
             self.apply_config_button_color_animation.to(
                 ColorF::new_u(33, 33, 33, 100),
                 Duration::from_millis(100),
@@ -672,8 +672,8 @@ impl DocumentTrait for DeviceConfigurator {
 
     fn calculate_size(
         &mut self,
-        frame_size: LayoutSize,
-        wrapper: &mut WindowWrapper<GlobalState>,
+        _frame_size: LayoutSize,
+        _wrapper: &mut WindowWrapper<GlobalState>,
     ) -> LayoutSize {
         let mut height = 25.0;
         let mut width = self.device_info_text.size.width + self.apply_config_text.size.width + 50.0;
@@ -695,10 +695,10 @@ impl DocumentTrait for DeviceConfigurator {
 
     fn draw(
         &self,
-        frame_size: LayoutSize,
+        _frame_size: LayoutSize,
         frame_builder: &mut FrameBuilder,
         space_and_clip: SpaceAndClipInfo,
-        wrapper: &mut WindowWrapper<GlobalState>,
+        _wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
 

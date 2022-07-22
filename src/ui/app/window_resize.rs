@@ -11,12 +11,12 @@ use winit::window::CursorIcon;
 impl App {
     pub fn update_window_resize_cursor_icon(
         &self,
-        new_over_state: &HashSet<AppEvent>,
+        new_over_state: &HashSet<(AppEvent, u16)>,
         wrapper: &mut WindowWrapper<GlobalState>,
     ) {
         if let None = self.resizing {
-            let test_cursor = |event: &AppEvent, cursor: CursorIcon| -> bool {
-                if new_over_state.contains(event) {
+            let test_cursor = |event: AppEvent, cursor: CursorIcon| -> bool {
+                if new_over_state.contains(&(event, 0)) {
                     wrapper.context.window().set_cursor_icon(cursor);
 
                     true
@@ -25,14 +25,14 @@ impl App {
                 }
             };
             let is_cursor_icon_set =
-                test_cursor(&AppEvent::WindowResizeTopLeft, CursorIcon::NwResize)
-                    || test_cursor(&AppEvent::WindowResizeTopRight, CursorIcon::NeResize)
-                    || test_cursor(&AppEvent::WindowResizeTop, CursorIcon::NResize)
-                    || test_cursor(&AppEvent::WindowResizeBottomLeft, CursorIcon::SwResize)
-                    || test_cursor(&AppEvent::WindowResizeBottomRight, CursorIcon::SeResize)
-                    || test_cursor(&AppEvent::WindowResizeBottom, CursorIcon::SResize)
-                    || test_cursor(&AppEvent::WindowResizeLeft, CursorIcon::WResize)
-                    || test_cursor(&AppEvent::WindowResizeRight, CursorIcon::EResize);
+                test_cursor(AppEvent::WindowResizeTopLeft, CursorIcon::NwResize)
+                    || test_cursor(AppEvent::WindowResizeTopRight, CursorIcon::NeResize)
+                    || test_cursor(AppEvent::WindowResizeTop, CursorIcon::NResize)
+                    || test_cursor(AppEvent::WindowResizeBottomLeft, CursorIcon::SwResize)
+                    || test_cursor(AppEvent::WindowResizeBottomRight, CursorIcon::SeResize)
+                    || test_cursor(AppEvent::WindowResizeBottom, CursorIcon::SResize)
+                    || test_cursor(AppEvent::WindowResizeLeft, CursorIcon::WResize)
+                    || test_cursor(AppEvent::WindowResizeRight, CursorIcon::EResize);
 
             if !is_cursor_icon_set {
                 wrapper

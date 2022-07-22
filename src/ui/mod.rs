@@ -83,7 +83,7 @@ pub enum AppEventType {
 
 pub struct App {
     do_exit: bool,
-    over_states: HashSet<AppEvent>,
+    over_states: HashSet<(AppEvent, u16)>,
     title_text: Text,
     close_button_color_key: PropertyBindingKey<ColorF>,
     maximize_button_color_key: PropertyBindingKey<ColorF>,
@@ -185,7 +185,7 @@ impl App {
 
         for hit_item in hit_items {
             if let Some(event) = AppEvent::from(hit_item.tag.0) {
-                new_over_state.insert(event);
+                new_over_state.insert((event, hit_item.tag.1));
             }
         }
 
@@ -584,7 +584,7 @@ pub trait DocumentTrait {
     ) {
     }
 
-    fn update_over_state(&mut self, _new_over_state: &HashSet<AppEvent>) {}
+    fn update_over_state(&mut self, _new_over_state: &HashSet<(AppEvent, u16)>) {}
 
     fn update_app_state(&mut self, _wrapper: &mut WindowWrapper<GlobalState>) {}
 
