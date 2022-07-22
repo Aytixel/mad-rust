@@ -105,12 +105,47 @@ impl Connection {
 
                                             global_state.request_redraw();
                                         }
-                                        Commands::DeviceConfig(device_config) => {
-                                            let mut selected_device_config_option = global_state
-                                                .selected_device_config_option_mutex
-                                                .lock_poisoned();
+                                        Commands::DeviceConfig(mut device_config) => {
+                                            if let Some(selected_device_id) = global_state
+                                                .selected_device_id_option_mutex
+                                                .lock_poisoned()
+                                                .as_ref()
+                                            {
+                                                let mut selected_device_config_option =
+                                                    global_state
+                                                        .selected_device_config_option_mutex
+                                                        .lock_poisoned();
 
-                                            *selected_device_config_option = Some(device_config);
+                                                device_config.config.resize(
+                                                    driver_hashmap[&selected_device_id.socket_addr]
+                                                        .driver_configuration_descriptor
+                                                        .button_name_vec
+                                                        .len(),
+                                                    [vec![], vec![]],
+                                                );
+
+                                                for config in device_config.config.iter_mut() {
+                                                    config[0].resize(
+                                                        driver_hashmap
+                                                            [&selected_device_id.socket_addr]
+                                                            .driver_configuration_descriptor
+                                                            .mode_count
+                                                            as usize,
+                                                        String::new(),
+                                                    );
+                                                    config[1].resize(
+                                                        driver_hashmap
+                                                            [&selected_device_id.socket_addr]
+                                                            .driver_configuration_descriptor
+                                                            .shift_mode_count
+                                                            as usize,
+                                                        String::new(),
+                                                    );
+                                                }
+
+                                                *selected_device_config_option =
+                                                    Some(device_config);
+                                            }
                                         }
                                         _ => {}
                                     }
