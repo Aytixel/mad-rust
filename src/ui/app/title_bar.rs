@@ -118,7 +118,6 @@ impl App {
         &mut self,
         window_size: PhysicalSize<u32>,
         frame_builder: &mut FrameBuilder,
-        clip_chain_id: ClipChainId,
         global_state: Arc<GlobalState>,
     ) {
         let builder = &mut frame_builder.builder;
@@ -143,7 +142,7 @@ impl App {
         );
         builder.push_hit_test(
             title_bar_layout_rect,
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::empty(),
             (AppEvent::TitleBar.into(), 0),
@@ -169,7 +168,7 @@ impl App {
             );
             builder.push_hit_test(
                 return_button_layout_rect,
-                clip_chain_id,
+                frame_builder.space_and_clip.clip_chain_id,
                 frame_builder.space_and_clip.spatial_id,
                 PrimitiveFlags::empty(),
                 (AppEvent::ReturnButton.into(), 0),
@@ -254,7 +253,7 @@ impl App {
         );
         builder.push_hit_test(
             close_button_layout_rect,
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::empty(),
             (AppEvent::CloseButton.into(), 0),
@@ -279,7 +278,7 @@ impl App {
         );
         builder.push_hit_test(
             maximize_button_layout_rect,
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::empty(),
             (AppEvent::MaximizeButton.into(), 0),
@@ -304,7 +303,7 @@ impl App {
         );
         builder.push_hit_test(
             minimize_button_layout_rect,
-            clip_chain_id,
+            frame_builder.space_and_clip.clip_chain_id,
             frame_builder.space_and_clip.spatial_id,
             PrimitiveFlags::empty(),
             (AppEvent::MinimizeButton.into(), 0),

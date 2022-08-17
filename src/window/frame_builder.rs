@@ -20,10 +20,14 @@ impl FrameBuilder {
         .to_f32()
             / Scale::new(wrapper.context.window().scale_factor() as f32);
         let mut builder = DisplayListBuilder::new(wrapper.pipeline_id);
-        let space_and_clip = SpaceAndClipInfo::root_scroll(wrapper.pipeline_id);
-        let bounds = LayoutRect::from_size(layout_size);
 
         builder.begin();
+
+        let space_and_clip = SpaceAndClipInfo {
+            spatial_id: SpaceAndClipInfo::root_scroll(wrapper.pipeline_id).spatial_id,
+            clip_chain_id: builder.define_clip_chain(None, []),
+        };
+        let bounds = LayoutRect::from_size(layout_size);
 
         Self {
             layout_size,

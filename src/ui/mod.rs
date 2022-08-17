@@ -531,7 +531,6 @@ impl WindowTrait<GlobalState> for App {
         self.draw_title_bar(
             wrapper.window_size,
             frame_builder,
-            frame_builder.space_and_clip.clip_chain_id,
             wrapper.global_state.clone(),
         );
         self.draw_window_resize(wrapper.window_size, frame_builder);

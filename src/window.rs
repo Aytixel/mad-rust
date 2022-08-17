@@ -25,7 +25,7 @@ use webrender::api::{
     ColorF, DocumentId, Epoch, FontKey, HitTestResultItem, PipelineId, RenderReasons,
 };
 use webrender::render_api::{RenderApi, Transaction};
-use webrender::{Renderer, RendererOptions};
+use webrender::{create_webrender_instance, Renderer, WebRenderOptions};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{
     ButtonId, DeviceEvent, ElementState, KeyboardInput, MouseButton, MouseScrollDelta, WindowEvent,
@@ -183,7 +183,7 @@ impl<T: GlobalStateTrait> WindowWrapper<T> {
             )
         };
         self.context.window().set_inner_size(self.window_size);
-        self.global_state.should_redraw();
+        self.global_state.request_redraw();
     }
 
     pub fn set_window_position(&self, position: PhysicalPosition<i32>) {
@@ -323,16 +323,16 @@ impl<T: GlobalStateTrait> Window<T> {
             Api::WebGl => unimplemented!(),
         };
 
-        let opts = RendererOptions {
+        let opts = WebRenderOptions {
             clear_color: ColorF::TRANSPARENT,
-            ..RendererOptions::default()
+            ..WebRenderOptions::default()
         };
         let device_size = {
             let size = context.window().inner_size();
             DeviceIntSize::new(size.width as i32, size.height as i32)
         };
         let notifier = Box::new(Notifier::new(event_loop.create_proxy()));
-        let (renderer, sender) = Renderer::new(gl, notifier, opts, None).unwrap();
+        let (renderer, sender) = create_webrender_instance(gl, notifier, opts, None).unwrap();
         let api = sender.create_api();
         let document_id = api.add_document(device_size);
         let epoch = Epoch(0);
