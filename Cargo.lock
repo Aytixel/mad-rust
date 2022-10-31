@@ -1523,6 +1523,7 @@ dependencies = [
  "num",
  "num-derive",
  "num-traits",
+ "sudo",
  "tokio",
  "webrender",
  "window-vibrancy",
@@ -2521,6 +2522,16 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "sudo"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a88e74edf206f281aff2820aa2066c781331044c770626dcafe19491f214e05"
+dependencies = [
+ "libc",
+ "log",
+]
 
 [[package]]
 name = "svg_fmt"

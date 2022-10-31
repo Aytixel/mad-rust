@@ -113,6 +113,9 @@ impl GlobalStateTrait for GlobalState {
 
 #[tokio::main]
 async fn main() {
+    #[cfg(not(target_os = "windows"))]
+    sudo::escalate_if_needed().unwrap();
+
     if kill_double() {
         return;
     }

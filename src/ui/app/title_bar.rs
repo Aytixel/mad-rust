@@ -13,7 +13,7 @@ use webrender::api::units::{
     LayoutPoint, LayoutRect, LayoutSideOffsets, LayoutSize, LayoutTransform,
 };
 use webrender::api::{
-    BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipChainId, ClipMode, ColorF,
+    BorderDetails, BorderRadius, BorderSide, BorderStyle, ClipMode, ColorF,
     CommonItemProperties, DynamicProperties, NormalBorder, PrimitiveFlags, PropertyBinding,
     PropertyValue, ReferenceFrameKind, SpaceAndClipInfo, SpatialTreeItemKey, TransformStyle,
 };
