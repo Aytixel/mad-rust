@@ -16,7 +16,7 @@ sudo = "0.6.0"
 
 util = { git = "https://github.com/Aytixel/mad-rust-util", package = "mad-rust-util" }
 
-tokio = { version = "1.23.0", features = ["full"] }
+tokio = { version = "1.24.2", features = ["full"] }
 num = "0.4.0"
 num-derive = "0.3.3"
 num-traits = "0.2.15"
